@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "polarx"
+version = "0.1.0"
+description = "POLyhedral Activation Region Xplorer: exact enumeration of linear regions in ReLU neural networks"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Johan Mylius-Kroken", email = "johan.m.kroken@gmail.com" }
+]
+keywords = [
+    "neural networks",
+    "linear regions",
+    "polyhedral",
+    "ReLU",
+    "piecewise linear",
+    "affine",
+    "interpretability",
+    "geometry",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "juliacall>=0.9.0",
+    "torch>=2.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+h5 = ["h5py>=3.8"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+
+[project.urls]
+Homepage = "https://github.com/Johanmkr/polarx"
+Documentation = "https://github.com/Johanmkr/polarx#readme"
+Repository = "https://github.com/Johanmkr/polarx"
+Issues = "https://github.com/Johanmkr/polarx/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+polarx = ["julia/*"]
+
+# --- Ruff (linter + formatter) ---
+[tool.ruff]
+line-length = 88
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+# --- Pytest ---
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short"
+
+# --- Mypy ---
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true

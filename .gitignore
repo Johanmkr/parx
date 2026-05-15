@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+.env
+
+# uv
+.uv/
+uv.lock          # commit this if you want locked Python deps, otherwise ignore
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ruff / mypy
+.ruff_cache/
+.mypy_cache/
+
+# Julia
+# Do NOT ignore Manifest.toml — it should be committed for reproducibility
+*.jl.cov
+*.jl.mem
+/depot/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Jupyter (if you add notebooks later)
+.ipynb_checkpoints/
+*.ipynb
