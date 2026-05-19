@@ -1,5 +1,5 @@
 """Smoke tests — verify the Julia bridge is alive."""
-from polarx._julia_init import ensure_julia
+from parx._julia_init import ensure_julia
 
 
 def test_julia_loads():

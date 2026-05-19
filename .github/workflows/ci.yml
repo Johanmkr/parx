@@ -35,13 +35,13 @@ jobs:
         run: uv pip install -e ".[dev]" --system
 
       - name: Instantiate Julia environment
-        run: julia --project=src/polarx/julia -e "using Pkg; Pkg.instantiate()"
+        run: julia --project=src/parx/julia -e "using Pkg; Pkg.instantiate()"
 
       - name: Lint with ruff
         run: ruff check src/ tests/
 
       - name: Run tests
-        run: pytest --cov=polarx --cov-report=xml
+        run: pytest --cov=parx --cov-report=xml
         env:
           JULIA_NUM_THREADS: "2"
 
