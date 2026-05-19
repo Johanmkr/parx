@@ -185,6 +185,43 @@ def test_exact_centroids_satisfy_halfspaces():
 
 # ── Phase 6: compute_partition ────────────────────────────────────────────────
 
+def test_exact_no_overlaps():
+    """No two exact-mode regions should share an interior point."""
+    from parx import compute_partition
+    from parx.verify import check_no_overlaps
+
+    model = nn.Sequential(nn.Linear(2, 2, bias=False), nn.ReLU(), nn.Linear(2, 1))
+    with torch.no_grad():
+        model[0].weight.copy_(torch.eye(2))
+
+    partition = compute_partition(model, np.array([1.0, 1.0]), mode="exact")
+
+    rng = np.random.default_rng(0)
+    X = rng.uniform(-2, 2, (500, 2))
+    ok, counts = check_no_overlaps(partition, X)
+    assert ok, f"Overlapping regions detected — max membership count: {counts.max()}"
+
+
+def test_exact_covers_space():
+    """Exact-mode partition must assign every point to exactly one region."""
+    from parx import compute_partition
+    from parx.verify import check_covers_space
+
+    model = nn.Sequential(nn.Linear(2, 2, bias=False), nn.ReLU(), nn.Linear(2, 1))
+    with torch.no_grad():
+        model[0].weight.copy_(torch.eye(2))
+
+    partition = compute_partition(model, np.array([1.0, 1.0]), mode="exact")
+
+    rng = np.random.default_rng(0)
+    X = rng.uniform(-2, 2, (500, 2))
+    ok, counts = check_covers_space(partition, X)
+    assert ok, (
+        f"Partition does not cover all points — "
+        f"{(counts == 0).sum()} uncovered, {(counts > 1).sum()} overlapping"
+    )
+
+
 def test_compute_partition_sparse():
     """End-to-end: compute_partition returns a usable Partition."""
     from parx import compute_partition

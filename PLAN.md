@@ -78,7 +78,7 @@ layers define the polyhedral partition.
 - `mode="exact"`: calls Phase 3; `data` used only to pick starting point `x0`.
 - Returns a `Partition`.
 
-### Phase 7 — Plotly visualisation
+### Phase 7 — Plotly visualisation  ✅ done
 `src/parx/viz.py`:
 
 - `plot_partition_2d(partition, x_range, y_range, resolution=200)` — rasterise 2D

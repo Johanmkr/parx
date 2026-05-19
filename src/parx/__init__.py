@@ -13,6 +13,7 @@ from parx._julia_init import ensure_julia  # noqa: F401
 from parx.network import load_network
 from parx.partition import Partition
 from parx.region import Region
+from parx import viz  # noqa: F401  — expose parx.viz
 
 check_julia()
 
