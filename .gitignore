@@ -34,6 +34,9 @@ htmlcov/
 CLAUDE.md
 memory/
 
+# Examples output
+examples/output/
+
 # Editors
 .vscode/
 .idea/
