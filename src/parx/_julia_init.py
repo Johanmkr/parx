@@ -23,6 +23,9 @@ def ensure_julia():
         return _jl
 
     os.environ.setdefault("JULIA_NUM_THREADS", "auto")
+    # Let Julia own signal handling so its GC threads don't conflict with
+    # Python's signal machinery.  Must be set before juliacall is imported.
+    os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
 
     from juliacall import Main as jl
 

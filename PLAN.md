@@ -52,7 +52,7 @@ layers define the polyhedral partition.
   - `route(X)` — forward pass + hash-lookup to assign each row of X to its region.
   - `regions_at_layer(l)` — filter by activation path length.
 
-### Phase 2 — Julia sparse region finder
+### Phase 2 — Julia sparse region finder  ✅ done
 `LinearRegions.jl`: `find_regions_sparse(py_weights, py_biases, py_points)`
 
 - Parallel forward pass (`Threads.@threads`) to compute activation paths for all points.
@@ -71,7 +71,7 @@ layers define the polyhedral partition.
   `active_offsets::Vector{Int64}`, `bounded::Vector{Bool}`.
 - `Partition._from_exact_output(...)` class method.
 
-### Phase 6 — Public API
+### Phase 6 — Public API  ✅ done (sparse mode)
 `parx.compute_partition(model, data=None, *, mode="sparse", include_output_layer=False)`
 
 - `mode="sparse"`: calls Phase 2; `data` is required (the point set).

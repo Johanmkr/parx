@@ -1,14 +1,19 @@
-"""Smoke tests — verify the Julia bridge is alive and the data bridge works."""
+"""Smoke tests — Julia bridge, sparse region finder, and compute_partition."""
+# juliacall must be imported before torch to avoid a signal-handling conflict.
+from parx._julia_init import ensure_julia
+
 import numpy as np
 import pytest
-
-from parx._julia_init import ensure_julia
+import torch
+import torch.nn as nn
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _julia(julia_session):
     """Ensure Julia is ready for every test in this module."""
 
+
+# ── Phase 1: bridge ───────────────────────────────────────────────────────────
 
 def test_julia_loads():
     jl = ensure_julia()
@@ -28,7 +33,7 @@ def test_hello():
 
 
 def test_network_info():
-    """Phase 1: verify numpy weight arrays survive the Python→Julia round-trip."""
+    """Verify numpy weight arrays survive the Python→Julia round-trip."""
     jl = ensure_julia()
     W1 = np.random.randn(4, 2)
     b1 = np.random.randn(4)
@@ -38,3 +43,111 @@ def test_network_info():
     input_dim, n_layers = jl.LinearRegions.network_info([W1, W2], [b1, b2])
     assert int(input_dim) == 2
     assert int(n_layers) == 2
+
+
+# ── Phase 2: sparse region finder ────────────────────────────────────────────
+
+def test_sparse_regions_quadrants():
+    """Identity 2→2 single-layer network must produce exactly 4 quadrant regions."""
+    jl = ensure_julia()
+    W = np.eye(2)
+    b = np.zeros(2)
+    X = np.array([[1., 1.], [1., -1.], [-1., 1.], [-1., -1.]])
+
+    result = jl.LinearRegions.find_regions_sparse([W], [b], X)
+    patterns  = np.array(result[0])
+    offsets   = np.array(result[1])
+    centroids = np.array(result[2])
+
+    assert patterns.shape  == (4, 2), "4 regions × 2 bits"
+    assert list(offsets)   == [0, 2], "1 layer → offsets [0, 2]"
+    assert centroids.shape == (4, 2), "4 centroids in 2D"
+
+    # All 4 activation patterns must be distinct
+    rows = set(map(tuple, patterns.tolist()))
+    assert len(rows) == 4
+
+
+def test_sparse_regions_duplicate_points():
+    """Repeated points from the same region count as one region."""
+    jl = ensure_julia()
+    W = np.eye(2)
+    b = np.zeros(2)
+    # 8 points but only 2 distinct regions
+    X = np.array([
+        [1., 1.], [2., 3.], [0.5, 0.1],   # all q=[1,1]
+        [-1., -1.], [-2., -3.], [-0.1, -0.5],  # all q=[0,0]
+        [1., 1.],   # duplicate
+        [-1., -1.],  # duplicate
+    ])
+
+    result = jl.LinearRegions.find_regions_sparse([W], [b], X)
+    patterns = np.array(result[0])
+    assert patterns.shape[0] == 2
+
+
+def test_sparse_regions_two_layers():
+    """Two-layer network: verify offsets and activation path slicing."""
+    jl = ensure_julia()
+    W1 = np.eye(2)
+    b1 = np.zeros(2)
+    W2 = np.array([[1., 1.], [-1., 1.]])
+    b2 = np.zeros(2)
+    X  = np.array([[1., 1.], [1., -1.], [-1., 1.], [-1., -1.]])
+
+    result  = jl.LinearRegions.find_regions_sparse([W1, W2], [b1, b2], X)
+    patterns = np.array(result[0])
+    offsets  = np.array(result[1])
+
+    assert list(offsets) == [0, 2, 4], "2 layers × 2 neurons → [0, 2, 4]"
+    assert patterns.shape[1] == 4, "4 total bits"
+
+    # Layer 0 bits = patterns[:, 0:2], layer 1 bits = patterns[:, 2:4]
+    for i in range(patterns.shape[0]):
+        l0 = patterns[i, offsets[0]:offsets[1]]
+        l1 = patterns[i, offsets[1]:offsets[2]]
+        assert len(l0) == 2
+        assert len(l1) == 2
+
+
+# ── Phase 6: compute_partition ────────────────────────────────────────────────
+
+def test_compute_partition_sparse():
+    """End-to-end: compute_partition returns a usable Partition."""
+    from parx import compute_partition
+
+    model = nn.Sequential(
+        nn.Linear(2, 2, bias=False),
+        nn.ReLU(),
+        nn.Linear(2, 1),
+    )
+    with torch.no_grad():
+        model[0].weight.copy_(torch.eye(2))
+
+    X = np.array([[1., 1.], [1., -1.], [-1., 1.], [-1., -1.]])
+    partition = compute_partition(model, X, mode="sparse")
+
+    assert len(partition) == 4
+    assert partition.input_dim == 2
+    assert partition.n_layers  == 1   # output layer excluded
+
+    # Each point should route back to a known region
+    routed = partition.route(X)
+    assert all(r is not None for r in routed)
+
+
+def test_compute_partition_halfspaces():
+    """Halfspaces reconstructed for each region must contain its centroid."""
+    from parx import compute_partition
+
+    model = nn.Sequential(nn.Linear(2, 2, bias=False), nn.ReLU(), nn.Linear(2, 1))
+    with torch.no_grad():
+        model[0].weight.copy_(torch.eye(2))
+
+    X = np.array([[1., 1.], [1., -1.], [-1., 1.], [-1., -1.]])
+    partition = compute_partition(model, X)
+
+    for region in partition.regions:
+        D, g = partition.halfspaces(region)
+        slack = g - D @ region.centroid
+        assert np.all(slack >= -1e-9), "centroid must satisfy D*x <= g"

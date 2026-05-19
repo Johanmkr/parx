@@ -134,3 +134,32 @@ class Partition:
     def regions_at_layer(self, l: int) -> list[Region]:
         """Return regions whose activation path has exactly l layers."""
         return [r for r in self.regions if r.n_layers == l]
+
+    # ── Construction from Julia output ────────────────────────────────────────
+
+    @classmethod
+    def _from_sparse_output(
+        cls,
+        jl_result,
+        weights: list[np.ndarray],
+        biases: list[np.ndarray],
+    ) -> "Partition":
+        """Build a Partition from the tuple returned by find_regions_sparse."""
+        patterns  = np.array(jl_result[0])                    # (n_regions, total_bits)
+        offsets   = np.array(jl_result[1], dtype=np.int64)    # (n_layers+1,)  0-indexed
+        centroids = np.array(jl_result[2])                    # (n_regions, input_dim)
+
+        n_regions = patterns.shape[0]
+        n_layers  = len(offsets) - 1
+
+        regions = [
+            Region(
+                activation_path=[
+                    patterns[i, offsets[l] : offsets[l + 1]].astype(bool)
+                    for l in range(n_layers)
+                ],
+                centroid=centroids[i],
+            )
+            for i in range(n_regions)
+        ]
+        return cls(regions=regions, weights=weights, biases=biases)
