@@ -110,6 +110,79 @@ def test_sparse_regions_two_layers():
         assert len(l1) == 2
 
 
+# ── Phase 3: exact region finder ─────────────────────────────────────────────
+
+def test_exact_regions_quadrants():
+    """Exact mode on identity [2→2] must find all 4 quadrant regions."""
+    jl = ensure_julia()
+    W  = np.eye(2)
+    b  = np.zeros(2)
+    x0 = np.array([1.0, 1.0])
+
+    result   = jl.LinearRegions.find_regions_exact([W], [b], x0)
+    patterns = np.array(result[0])
+    offsets  = np.array(result[1])
+
+    assert patterns.shape[0] == 4, "should find all 4 quadrant regions"
+    assert list(offsets) == [0, 2]
+    rows = set(map(tuple, patterns.tolist()))
+    assert len(rows) == 4, "all 4 patterns must be distinct"
+
+
+def test_exact_finds_more_than_sparse():
+    """Exact mode discovers regions not covered by the data; sparse does not."""
+    jl = ensure_julia()
+    W  = np.eye(2)
+    b  = np.zeros(2)
+
+    # Sparse: only points in the positive quadrant → sees just 1 region.
+    X_partial = np.array([[1.0, 1.0], [2.0, 0.5]])
+    n_sparse  = np.array(jl.LinearRegions.find_regions_sparse([W], [b], X_partial)[0]).shape[0]
+
+    # Exact: starting from the same region, traverses all neighbours.
+    x0      = np.array([1.0, 1.0])
+    n_exact = np.array(jl.LinearRegions.find_regions_exact([W], [b], x0)[0]).shape[0]
+
+    assert n_sparse == 1
+    assert n_exact  == 4
+
+
+def test_exact_two_layers():
+    """Two-layer identity network: exact mode returns correct number of regions."""
+    jl = ensure_julia()
+    W1 = np.eye(2)
+    b1 = np.zeros(2)
+    W2 = np.eye(2)
+    b2 = np.zeros(2)
+    x0 = np.array([1.0, 1.0])
+
+    result   = jl.LinearRegions.find_regions_exact([W1, W2], [b1, b2], x0)
+    patterns = np.array(result[0])
+    offsets  = np.array(result[1])
+
+    assert list(offsets) == [0, 2, 4]
+    # With identity weights, layer 2 activation is determined by layer 1, so still 4 regions.
+    assert patterns.shape[0] == 4
+
+
+def test_exact_centroids_satisfy_halfspaces():
+    """Chebyshev centres returned by exact mode must satisfy their halfspace systems."""
+    from parx import compute_partition
+
+    model = nn.Sequential(nn.Linear(2, 2, bias=False), nn.ReLU(), nn.Linear(2, 1))
+    with torch.no_grad():
+        model[0].weight.copy_(torch.eye(2))
+
+    x0        = np.array([1.0, 1.0])
+    partition = compute_partition(model, x0, mode="exact")
+
+    assert len(partition) == 4
+    for region in partition.regions:
+        D, g  = partition.halfspaces(region)
+        slack = g - D @ region.centroid
+        assert np.all(slack >= -1e-8), "centroid must satisfy all halfspaces"
+
+
 # ── Phase 6: compute_partition ────────────────────────────────────────────────
 
 def test_compute_partition_sparse():

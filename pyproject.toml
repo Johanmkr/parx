@@ -59,7 +59,7 @@ Issues = "https://github.com/Johanmkr/parx/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-parx = ["julia/*"]
+parx = ["julia/*", "juliapkg.json"]
 
 # --- Ruff (linter + formatter) ---
 [tool.ruff]

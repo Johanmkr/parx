@@ -65,6 +65,9 @@ def compute_partition(
         return Partition._from_sparse_output(result, weights, biases)
 
     if mode == "exact":
-        raise NotImplementedError("mode='exact' will be available in Phase 3.")
+        data_arr = np.asarray(data, dtype=float)
+        x0 = data_arr[0] if data_arr.ndim == 2 else data_arr.ravel()
+        result = jl.LinearRegions.find_regions_exact(weights, biases, x0)
+        return Partition._from_sparse_output(result, weights, biases)
 
     raise ValueError(f"Unknown mode {mode!r}. Choose 'sparse' or 'exact'.")

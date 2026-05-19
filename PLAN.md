@@ -62,7 +62,7 @@ layers define the polyhedral partition.
 - No LP, no Julia deps beyond `LinearAlgebra`.
 - `Partition._from_sparse_output(...)` class method converts the Julia output.
 
-### Phase 3 — Julia exact region finder (DFS + facet-flip)
+### Phase 3 — Julia exact region finder (DFS + facet-flip)  ✅ done
 `LinearRegions.jl`: `find_regions_exact(py_weights, py_biases, py_x0)`
 
 - Port of `_build_dfs!` from the original `construction.jl`.
