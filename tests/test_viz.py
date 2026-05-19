@@ -32,18 +32,25 @@ def simple_partition():
 
 def test_plot_partition_2d_returns_figure(simple_partition):
     from parx.viz import plot_partition_2d
-    fig = plot_partition_2d(simple_partition, resolution=20)
+    fig = plot_partition_2d(simple_partition)   # auto-range
     assert isinstance(fig, go.Figure)
-    assert len(fig.data) == 1
-    assert isinstance(fig.data[0], go.Heatmap)
+    assert len(fig.data) == len(simple_partition)
+    assert all(isinstance(t, go.Scatter) for t in fig.data)
 
 
-def test_plot_partition_2d_grid_shape(simple_partition):
+def test_plot_partition_2d_polygons_have_vertices(simple_partition):
     from parx.viz import plot_partition_2d
-    res = 30
-    fig = plot_partition_2d(simple_partition, resolution=res)
-    Z = np.array(fig.data[0].z)
-    assert Z.shape == (res, res)
+    fig = plot_partition_2d(simple_partition)
+    for trace in fig.data:
+        assert len(trace.x) >= 4  # at least triangle + closing point
+
+
+def test_plot_partition_2d_hover_contains_activation(simple_partition):
+    from parx.viz import plot_partition_2d
+    fig = plot_partition_2d(simple_partition)
+    for trace in fig.data:
+        # Every hover template should mention at least one layer activation
+        assert "L1:" in trace.hovertemplate
 
 
 def test_plot_partition_2d_rejects_non_2d():

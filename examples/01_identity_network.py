@@ -79,7 +79,7 @@ for i, r in enumerate(p_exact.regions):
 # ── Visualisations ────────────────────────────────────────────────────────────
 print("\nFigures (opening in browser):")
 
-fig1 = plot_partition_2d(p_exact, x_range=RANGE, y_range=RANGE)
+fig1 = plot_partition_2d(p_exact)
 fig1.show()
 save(fig1, "01_partition_2d")
 
@@ -87,6 +87,6 @@ fig2 = plot_region_counts(p_exact)
 fig2.show()
 save(fig2, "01_region_counts")
 
-fig3 = plot_halfspaces(p_exact, p_exact.regions[0], x_range=RANGE, y_range=RANGE)
+fig3 = plot_halfspaces(p_exact, p_exact.regions[0])
 fig3.show()
 save(fig3, "01_halfspaces_region0")

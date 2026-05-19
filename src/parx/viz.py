@@ -3,32 +3,151 @@
 from __future__ import annotations
 
 import numpy as np
+import plotly.express as px
 import plotly.graph_objects as go
 
 from parx.partition import Partition
 from parx.region import Region
 
 
+# ── Internal helpers ─────────────────────────────────────────────────────────
+
+def _activation_label(region: Region) -> str:
+    """Return a compact, per-layer activation pattern string for hover labels."""
+    parts = []
+    for l, q in enumerate(region.activation_path):
+        bits = "".join(str(int(b)) for b in q)
+        parts.append(f"L{l + 1}: {bits}")
+    return "<br>".join(parts)
+
+
+def _auto_range_2d(
+    partition: Partition,
+    pad: float = 0.3,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Compute a view range that shows all hyperplane intersection points.
+
+    Collects every unique boundary hyperplane from the partition, finds all
+    pairwise intersection points in 2-D, and returns a padded bounding box.
+    Falls back to (-2, 2) × (-2, 2) when no finite intersections exist.
+    """
+    # Collect unique normalised hyperplanes across all regions
+    rows: list[np.ndarray] = []
+    for region in partition.regions:
+        D, g = partition.halfspaces(region)
+        for i in range(D.shape[0]):
+            nrm = np.linalg.norm(D[i, :])
+            if nrm > 1e-10:
+                row = np.append(D[i, :] / nrm, g[i] / nrm)
+                # Canonicalise sign: first large element is positive
+                for v in row[:2]:
+                    if abs(v) > 1e-10:
+                        if v < 0:
+                            row = -row
+                        break
+                rows.append(row)
+
+    if not rows:
+        return (-2.0, 2.0), (-2.0, 2.0)
+
+    rows_arr = np.unique(np.round(rows, 8), axis=0)
+    D_u, g_u = rows_arr[:, :2], rows_arr[:, 2]
+    n = len(g_u)
+
+    # All pairwise intersections
+    pts: list[np.ndarray] = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            try:
+                x = np.linalg.solve(D_u[[i, j], :], g_u[[i, j]])
+                if np.all(np.isfinite(x)):
+                    pts.append(x)
+            except np.linalg.LinAlgError:
+                continue
+
+    if not pts:
+        return (-2.0, 2.0), (-2.0, 2.0)
+
+    pts_arr = np.array(pts)
+    xs, ys = pts_arr[:, 0], pts_arr[:, 1]
+    span   = max(float(xs.max() - xs.min()), float(ys.max() - ys.min()), 1.0)
+    margin = pad * span
+    return (float(xs.min()) - margin, float(xs.max()) + margin), \
+           (float(ys.min()) - margin, float(ys.max()) + margin)
+
+
+def _region_vertices_2d(
+    D: np.ndarray,
+    g: np.ndarray,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+) -> np.ndarray | None:
+    """CCW-ordered vertices of the 2-D polytope {x : D x ≤ g} clipped to the view box.
+
+    Algorithm: add bounding-box constraints, enumerate all pairwise boundary-line
+    intersections, keep those that satisfy every constraint (= vertices of the
+    clipped polytope), sort counter-clockwise.  Produces crisp vector polygons
+    with no sampling artefacts.
+    """
+    box_D = np.array([[ 1., 0.], [-1., 0.], [ 0.,  1.], [ 0., -1.]])
+    box_g = np.array([x_range[1], -x_range[0], y_range[1], -y_range[0]])
+    D_all = np.vstack([D, box_D])
+    g_all = np.hstack([g, box_g])
+
+    # Drop zero-norm rows (degenerate constraints — can't define a boundary line)
+    valid = np.linalg.norm(D_all, axis=1) > 1e-10
+    D_all, g_all = D_all[valid], g_all[valid]
+
+    n = len(g_all)
+    verts: list[np.ndarray] = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            A = D_all[[i, j], :]
+            try:
+                x = np.linalg.solve(A, g_all[[i, j]])
+            except np.linalg.LinAlgError:
+                continue
+            if not np.all(np.isfinite(x)):
+                continue
+            if np.all(D_all @ x <= g_all + 1e-8):
+                verts.append(x)
+
+    if len(verts) < 3:
+        return None
+
+    pts = np.unique(np.round(verts, 8), axis=0)
+    if len(pts) < 3:
+        return None
+
+    c = pts.mean(axis=0)
+    angles = np.arctan2(pts[:, 1] - c[1], pts[:, 0] - c[0])
+    return pts[np.argsort(angles)]
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
 def plot_partition_2d(
     partition: Partition,
-    x_range: tuple[float, float] = (-1.0, 1.0),
-    y_range: tuple[float, float] = (-1.0, 1.0),
-    resolution: int = 200,
+    x_range: tuple[float, float] | None = None,
+    y_range: tuple[float, float] | None = None,
+    pad: float = 0.3,
 ) -> go.Figure:
-    """Rasterise the input plane by region membership.
+    """Draw each linear region as a filled, crisp polygon.
 
-    Routes a ``resolution × resolution`` grid through the partition and colours
-    each cell by region index.  Cells that map to no known region (possible for
-    sparse partitions that don't cover the full domain) are left transparent.
+    Each region is rendered as a vector-quality ``go.Scatter`` polygon, giving
+    sharp boundaries regardless of plot size — no pixellation artefacts.
+    Hovering over a region shows its per-layer activation pattern.
 
     Parameters
     ----------
     partition : Partition
         Must have ``input_dim == 2``.
-    x_range, y_range : (float, float)
-        Axis extents for the plot grid.
-    resolution : int
-        Number of grid points along each axis.
+    x_range, y_range : (float, float) or None
+        Axis extents.  When ``None`` (default) the range is auto-computed from
+        the arrangement of hyperplane intersection points so all regions are
+        visible.  Unbounded regions are clipped to the computed box.
+    pad : float
+        Fractional padding added around the auto-computed bounding box.
 
     Returns
     -------
@@ -39,35 +158,48 @@ def plot_partition_2d(
             f"plot_partition_2d requires input_dim=2, got {partition.input_dim}"
         )
 
-    xs = np.linspace(x_range[0], x_range[1], resolution)
-    ys = np.linspace(y_range[0], y_range[1], resolution)
-    XX, YY = np.meshgrid(xs, ys)
-    X_grid = np.column_stack([XX.ravel(), YY.ravel()])
+    n = len(partition)
+    if n == 0:
+        return go.Figure()
 
-    routed = partition.route(X_grid)
-    region_to_idx = {id(r): i for i, r in enumerate(partition.regions)}
+    if x_range is None or y_range is None:
+        auto_x, auto_y = _auto_range_2d(partition, pad=pad)
+        x_range = x_range or auto_x
+        y_range = y_range or auto_y
 
-    Z = np.full(len(X_grid), np.nan)
-    for k, r in enumerate(routed):
-        if r is not None:
-            Z[k] = float(region_to_idx[id(r)])
-    Z = Z.reshape(resolution, resolution)
-
-    fig = go.Figure(
-        go.Heatmap(
-            x=xs,
-            y=ys,
-            z=Z,
-            colorscale="Turbo",
-            zsmooth=False,
-            showscale=False,
-            hovertemplate="x=%{x:.3f}, y=%{y:.3f}, region=%{z:.0f}<extra></extra>",
-        )
+    colors = px.colors.sample_colorscale(
+        "Turbo", [i / max(n - 1, 1) for i in range(n)]
     )
+
+    fig = go.Figure()
+    for i, region in enumerate(partition.regions):
+        D, g = partition.halfspaces(region)
+        verts = _region_vertices_2d(D, g, x_range, y_range)
+        if verts is None:
+            continue
+
+        xs = np.append(verts[:, 0], verts[0, 0])   # close the polygon
+        ys = np.append(verts[:, 1], verts[0, 1])
+
+        label = _activation_label(region)
+        fig.add_trace(
+            go.Scatter(
+                x=xs, y=ys,
+                fill="toself",
+                fillcolor=colors[i],
+                line=dict(color="black", width=0.8),
+                mode="lines",
+                opacity=0.75,
+                showlegend=False,
+                name=f"region {i}",
+                hovertemplate=f"{label}<extra></extra>",
+            )
+        )
+
     fig.update_layout(
-        xaxis_title="x₁",
-        yaxis_title="x₂",
-        title=f"Linear regions ({len(partition)} regions)",
+        xaxis=dict(range=list(x_range), title="x₁", constrain="domain"),
+        yaxis=dict(range=list(y_range), title="x₂", scaleanchor="x"),
+        title=f"Linear regions  ({n} regions)",
         width=520,
         height=500,
     )
@@ -95,11 +227,7 @@ def plot_region_counts(partition: Partition) -> go.Figure:
         counts.append(len(prefixes))
 
     fig = go.Figure(
-        go.Bar(
-            x=depths,
-            y=counts,
-            marker_color="steelblue",
-        )
+        go.Bar(x=depths, y=counts, marker_color="steelblue")
     )
     fig.update_layout(
         xaxis=dict(title="Layer depth", tickmode="linear", dtick=1),
@@ -152,34 +280,29 @@ def plot_halfspaces(
             if mask.any():
                 fig.add_trace(
                     go.Scatter(
-                        x=xs[mask],
-                        y=y_line[mask],
+                        x=xs[mask], y=y_line[mask],
                         mode="lines",
                         line=dict(color="rgba(80,80,80,0.45)", width=1),
                         showlegend=False,
                     )
                 )
         elif abs(d0) > 1e-10:
-            # Vertical line
             x_val = gi / d0
             if x_range[0] <= x_val <= x_range[1]:
                 fig.add_trace(
                     go.Scatter(
-                        x=[x_val, x_val],
-                        y=[y_range[0], y_range[1]],
+                        x=[x_val, x_val], y=[y_range[0], y_range[1]],
                         mode="lines",
                         line=dict(color="rgba(80,80,80,0.45)", width=1),
                         showlegend=False,
                     )
                 )
 
-    # Mark centroid if it lies within the plot window
     c = region.centroid
     if x_range[0] <= c[0] <= x_range[1] and y_range[0] <= c[1] <= y_range[1]:
         fig.add_trace(
             go.Scatter(
-                x=[c[0]],
-                y=[c[1]],
+                x=[c[0]], y=[c[1]],
                 mode="markers",
                 marker=dict(size=10, color="crimson", symbol="x"),
                 name="centroid",

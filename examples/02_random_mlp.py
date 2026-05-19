@@ -87,12 +87,12 @@ print(f"\nSparse routing: {n_covered}/{len(X_train)} training points covered "
 # ── Figures ───────────────────────────────────────────────────────────────────
 print("\nFigures (opening in browser):")
 
-fig_sparse = plot_partition_2d(p_sparse, x_range=RANGE, y_range=RANGE)
+fig_sparse = plot_partition_2d(p_sparse)
 fig_sparse.update_layout(title=f"Sparse partition  ({len(p_sparse)} regions)")
 fig_sparse.show()
 save(fig_sparse, "02_sparse_partition")
 
-fig_exact = plot_partition_2d(p_exact, x_range=RANGE, y_range=RANGE)
+fig_exact = plot_partition_2d(p_exact)
 fig_exact.update_layout(title=f"Exact partition  ({len(p_exact)} regions)")
 fig_exact.show()
 save(fig_exact, "02_exact_partition")
