@@ -2,13 +2,14 @@
 Example 2 — Random MLP  (2 → 5 → 5 → 5 → 1)
 =============================================
 Compares sparse and exact modes on a randomly initialised network.
-Runs verification and saves an overlay figure with region boundaries.
+Runs verification and saves figures.
 
 Run from the repo root:
     python examples/02_random_mlp.py
 
-PNG export requires Chrome (install once with:  plotly_get_chrome).
-HTML files are always saved and can be opened in any browser.
+Plots open automatically in the browser via fig.show().
+HTML copies are also saved to examples/output/ for later reference.
+PNG export requires Chrome once (run: plotly_get_chrome).
 """
 
 # juliacall must be imported before torch
@@ -27,6 +28,8 @@ OUT = Path(__file__).parent / "output"
 OUT.mkdir(exist_ok=True)
 
 SEED = 42
+RANGE = (-1.0, 1.0)   # training data domain
+
 torch.manual_seed(SEED)
 rng = np.random.default_rng(SEED)
 
@@ -40,7 +43,7 @@ def save(fig, stem: str) -> None:
         fig.write_image(png, scale=2)
         print(f"  Saved: {png}")
     except Exception:
-        print(f"  (PNG skipped — run `plotly_get_chrome` once to enable PNG export)")
+        print(f"  (PNG skipped — run 'plotly_get_chrome' once to enable)")
 
 
 # ── Build network ─────────────────────────────────────────────────────────────
@@ -53,21 +56,21 @@ model = nn.Sequential(
 print("Network: 2 → 5 → 5 → 5 → 1  (random weights, seed=42)")
 
 # ── Sparse partition ──────────────────────────────────────────────────────────
-X_train = rng.uniform(-1, 1, (500, 2))
+X_train = rng.uniform(*RANGE, (500, 2))
 p_sparse = compute_partition(model, X_train, mode="sparse")
-print(f"\nSparse  | regions: {len(p_sparse)}  (500 training points in [-1,1]²)")
+print(f"\nSparse  | regions: {len(p_sparse)}  (500 points in {RANGE})")
 
 # ── Exact partition ───────────────────────────────────────────────────────────
 x0 = np.zeros(2)
 p_exact = compute_partition(model, x0, mode="exact")
 print(f"Exact   | regions: {len(p_exact)}")
-print(f"        | exact found {len(p_exact) - len(p_sparse):+d} more regions than sparse")
+print(f"        | {len(p_exact) - len(p_sparse):+d} more regions than sparse")
 
 # ── Verification (exact mode) ─────────────────────────────────────────────────
-X_check = rng.uniform(-1, 1, (2000, 2))
-ok_no_overlap, counts = check_no_overlaps(p_exact, X_check)
-ok_covers,     counts = check_covers_space(p_exact, X_check)
-print(f"\nVerification (exact, 2000 random points in [-1,1]²):")
+X_check = rng.uniform(*RANGE, (2000, 2))
+ok_no_overlap, _ = check_no_overlaps(p_exact, X_check)
+ok_covers, counts = check_covers_space(p_exact, X_check)
+print(f"\nVerification (exact, 2000 random points in {RANGE}):")
 print(f"  No overlaps : {'OK' if ok_no_overlap else 'FAIL'}")
 print(f"  Full cover  : {'OK' if ok_covers    else 'FAIL'}")
 if not ok_no_overlap:
@@ -75,22 +78,25 @@ if not ok_no_overlap:
 if not ok_covers:
     print(f"  Uncovered: {(counts==0).sum()}  |  Overlapping: {(counts>1).sum()}")
 
-# ── Figures ───────────────────────────────────────────────────────────────────
-print("\nFigures:")
-
-fig_sparse = plot_partition_2d(p_sparse, resolution=250)
-fig_sparse.update_layout(title=f"Sparse partition ({len(p_sparse)} regions)")
-save(fig_sparse, "02_sparse_partition")
-
-fig_exact = plot_partition_2d(p_exact, resolution=250)
-fig_exact.update_layout(title=f"Exact partition ({len(p_exact)} regions)")
-save(fig_exact, "02_exact_partition")
-
-fig_counts = plot_region_counts(p_exact)
-save(fig_counts, "02_region_counts")
-
 # ── Routing coverage ─────────────────────────────────────────────────────────
 routed = p_sparse.route(X_train)
 n_covered = sum(r is not None for r in routed)
 print(f"\nSparse routing: {n_covered}/{len(X_train)} training points covered "
       f"({100 * n_covered / len(X_train):.1f} %)")
+
+# ── Figures ───────────────────────────────────────────────────────────────────
+print("\nFigures (opening in browser):")
+
+fig_sparse = plot_partition_2d(p_sparse, x_range=RANGE, y_range=RANGE)
+fig_sparse.update_layout(title=f"Sparse partition  ({len(p_sparse)} regions)")
+fig_sparse.show()
+save(fig_sparse, "02_sparse_partition")
+
+fig_exact = plot_partition_2d(p_exact, x_range=RANGE, y_range=RANGE)
+fig_exact.update_layout(title=f"Exact partition  ({len(p_exact)} regions)")
+fig_exact.show()
+save(fig_exact, "02_exact_partition")
+
+fig_counts = plot_region_counts(p_exact)
+fig_counts.show()
+save(fig_counts, "02_region_counts")
