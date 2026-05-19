@@ -29,6 +29,11 @@ htmlcov/
 *.jl.mem
 /depot/
 
+# Claude Code
+.claude/
+CLAUDE.md
+memory/
+
 # Editors
 .vscode/
 .idea/
