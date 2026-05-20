@@ -102,37 +102,97 @@ def test_exact_555_centroids_satisfy_halfspaces():
         assert np.all(slack >= -1e-8), "centroid violates its own halfspace system"
 
 
-def test_exact_555_no_overlaps():
-    """No two exact-mode regions of the 5,5,5 MLP should share an interior point."""
-    from parx.verify import check_no_overlaps
+def _exact_555_partition():
+    return compute_partition(_mlp555(), np.zeros(2), method="exact_julia")
 
-    model = _mlp555()
-    partition = compute_partition(model, np.zeros(2), method="exact_julia")
+
+def test_exact_555_regions_nonempty():
+    """Every exact-mode region must have a strictly positive Chebyshev radius."""
+    from parx.verify import check_regions_nonempty
+
+    partition = _exact_555_partition()
+    ok, bad, radii = check_regions_nonempty(partition, min_radius=1e-6)
+    assert ok, (
+        f"{len(bad)} degenerate region(s); smallest radii: "
+        f"{[(int(i), float(radii[i])) for i in bad[:5]]}"
+    )
+    assert float(radii.min()) > 1e-6, f"smallest radius = {radii.min():.3g}"
+
+
+def test_exact_555_no_overlaps():
+    """No two exact-mode regions of the 5,5,5 MLP should share an interior point.
+
+    Combines uniform sampling, boundary-targeted sampling (which stress-tests
+    the seams where numerical overlaps would manifest), and a sweep across
+    every region's centroid.
+    """
+    from parx.verify import check_no_overlaps, sample_near_boundaries
+
+    partition = _exact_555_partition()
 
     rng = np.random.default_rng(7)
-    X = rng.uniform(-1, 1, (1000, 2))
+    X_uniform  = rng.uniform(-1, 1, (5000, 2))
+    X_boundary = sample_near_boundaries(partition, eps=1e-3)
+    X_centroid = np.array([r.centroid for r in partition.regions])
+    X = np.vstack([X_uniform, X_boundary, X_centroid])
+
     ok, counts = check_no_overlaps(partition, X)
-    assert ok, (
-        f"Overlapping regions in exact partition — "
-        f"max membership count: {counts.max()}, "
-        f"affected points: {(counts > 1).sum()}"
-    )
+    if not ok:
+        bad_idx = np.where(counts > 1)[0]
+        offending = []
+        for i in bad_idx[:3]:
+            members = [
+                j for j, r in enumerate(partition.regions)
+                if np.all(partition.halfspaces(r)[0] @ X[i]
+                          <= partition.halfspaces(r)[1] + 1e-8)
+            ]
+            offending.append((X[i].tolist(), members))
+        raise AssertionError(
+            f"Overlapping regions in exact partition. "
+            f"max membership = {counts.max()}, "
+            f"{(counts > 1).sum()} of {len(X)} sampled points overlap "
+            f"({len(X_uniform)} uniform, {len(X_boundary)} boundary, "
+            f"{len(X_centroid)} centroids). "
+            f"Examples (point, region_ids): {offending}"
+        )
 
 
 def test_exact_555_covers_space():
-    """Every point in the sample domain must belong to exactly one exact region."""
-    from parx.verify import check_covers_space
+    """Every sampled point must belong to exactly one exact region — including
+    boundary-targeted samples that stress the seams between adjacent regions."""
+    from parx.verify import check_covers_space, sample_near_boundaries
 
-    model = _mlp555()
-    partition = compute_partition(model, np.zeros(2), method="exact_julia")
+    partition = _exact_555_partition()
 
     rng = np.random.default_rng(7)
-    X = rng.uniform(-1, 1, (1000, 2))
+    X_uniform  = rng.uniform(-1, 1, (5000, 2))
+    X_boundary = sample_near_boundaries(partition, eps=1e-3)
+    X = np.vstack([X_uniform, X_boundary])
+
     ok, counts = check_covers_space(partition, X)
+    if not ok:
+        uncovered = X[counts == 0]
+        overlap   = X[counts > 1]
+        raise AssertionError(
+            f"Exact partition does not tile the space. "
+            f"{len(uncovered)} uncovered (e.g. {uncovered[:3].tolist()}); "
+            f"{len(overlap)} overlapping (e.g. {overlap[:3].tolist()}). "
+            f"Sample mix: {len(X_uniform)} uniform + {len(X_boundary)} boundary."
+        )
+
+
+def test_exact_555_route_matches_halfspace_membership():
+    """route(x) must return the same region as the halfspace membership test."""
+    from parx.verify import check_routing_consistency
+
+    partition = _exact_555_partition()
+    rng = np.random.default_rng(11)
+    X = rng.uniform(-1, 1, (2000, 2))
+
+    ok, bad = check_routing_consistency(partition, X, tol=1e-8)
     assert ok, (
-        f"Exact partition does not tile the space — "
-        f"{(counts == 0).sum()} uncovered points, "
-        f"{(counts > 1).sum()} overlapping points"
+        f"route() disagreed with halfspace membership for {len(bad)} of "
+        f"{len(X)} sample points. First offenders: {bad[:5]}"
     )
 
 

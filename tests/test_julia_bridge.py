@@ -185,41 +185,76 @@ def test_exact_centroids_satisfy_halfspaces():
 
 # ── Phase 6: compute_partition ────────────────────────────────────────────────
 
-def test_exact_no_overlaps():
-    """No two exact-mode regions should share an interior point."""
+def _identity_exact_partition():
     from parx import compute_partition
-    from parx.verify import check_no_overlaps
-
     model = nn.Sequential(nn.Linear(2, 2, bias=False), nn.ReLU(), nn.Linear(2, 1))
     with torch.no_grad():
         model[0].weight.copy_(torch.eye(2))
+    return compute_partition(model, np.array([1.0, 1.0]), method="exact_julia")
 
-    partition = compute_partition(model, np.array([1.0, 1.0]), method="exact_julia")
+
+def test_exact_regions_nonempty():
+    """Each of the 4 quadrant regions must have a strictly positive Chebyshev radius."""
+    from parx.verify import check_regions_nonempty
+
+    partition = _identity_exact_partition()
+    ok, bad, radii = check_regions_nonempty(partition, min_radius=1e-6)
+    assert ok, (
+        f"degenerate region(s) in identity partition: "
+        f"{[(int(i), float(radii[i])) for i in bad]}"
+    )
+
+
+def test_exact_no_overlaps():
+    """No two exact-mode regions share an interior point — also under boundary samples."""
+    from parx.verify import check_no_overlaps, sample_near_boundaries
+
+    partition = _identity_exact_partition()
 
     rng = np.random.default_rng(0)
-    X = rng.uniform(-2, 2, (500, 2))
+    X_uniform  = rng.uniform(-2, 2, (2000, 2))
+    X_boundary = sample_near_boundaries(partition, eps=1e-3)
+    X = np.vstack([X_uniform, X_boundary])
+
     ok, counts = check_no_overlaps(partition, X)
-    assert ok, f"Overlapping regions detected — max membership count: {counts.max()}"
+    assert ok, (
+        f"Overlapping regions detected — max membership count: {counts.max()}, "
+        f"{(counts > 1).sum()} of {len(X)} samples overlapped "
+        f"({len(X_uniform)} uniform + {len(X_boundary)} boundary)"
+    )
 
 
 def test_exact_covers_space():
-    """Exact-mode partition must assign every point to exactly one region."""
-    from parx import compute_partition
-    from parx.verify import check_covers_space
+    """Exact-mode partition assigns every point to exactly one region."""
+    from parx.verify import check_covers_space, sample_near_boundaries
 
-    model = nn.Sequential(nn.Linear(2, 2, bias=False), nn.ReLU(), nn.Linear(2, 1))
-    with torch.no_grad():
-        model[0].weight.copy_(torch.eye(2))
-
-    partition = compute_partition(model, np.array([1.0, 1.0]), method="exact_julia")
+    partition = _identity_exact_partition()
 
     rng = np.random.default_rng(0)
-    X = rng.uniform(-2, 2, (500, 2))
+    X_uniform  = rng.uniform(-2, 2, (2000, 2))
+    X_boundary = sample_near_boundaries(partition, eps=1e-3)
+    X = np.vstack([X_uniform, X_boundary])
+
     ok, counts = check_covers_space(partition, X)
     assert ok, (
         f"Partition does not cover all points — "
-        f"{(counts == 0).sum()} uncovered, {(counts > 1).sum()} overlapping"
+        f"{(counts == 0).sum()} uncovered (first few: "
+        f"{X[counts == 0][:3].tolist()}), "
+        f"{(counts > 1).sum()} overlapping (first few: "
+        f"{X[counts > 1][:3].tolist()})"
     )
+
+
+def test_exact_routing_consistency():
+    """route(x) must return the same region as the halfspace membership test."""
+    from parx.verify import check_routing_consistency
+
+    partition = _identity_exact_partition()
+    rng = np.random.default_rng(0)
+    X = rng.uniform(-2, 2, (1000, 2))
+
+    ok, bad = check_routing_consistency(partition, X, tol=1e-8)
+    assert ok, f"route() disagreed with halfspace membership for {bad[:5]}"
 
 
 def test_compute_partition_sparse():
