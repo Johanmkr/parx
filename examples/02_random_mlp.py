@@ -21,7 +21,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from parx import compute_partition, list_methods
+from parx import compute_partition, list_methods, precompile
 from parx.verify import check_no_overlaps, check_covers_space
 from parx.viz import (
     plot_partition_2d,
@@ -77,10 +77,14 @@ print(f"Exact   | regions: {len(p_exact)}")
 print(f"        | {len(p_exact) - len(p_sparse):+d} more regions than sparse")
 
 # ── Cross-method timing ──────────────────────────────────────────────────────
+# precompile() amortises Julia's TTFX (time-to-first-X) so the timings below
+# reflect actual work, not JIT compilation.  Skip this when you just want one
+# region computation — the cost is paid once per Python process either way.
+print("\nWarming up Julia (precompile)…")
+precompile(verbose=True)
+
 print("\nExact-mode timing (same network, same x0):")
 for m in ("exact_julia", "exact_julia_fast", "exact_python"):
-    # warm up
-    compute_partition(state_dict, x0, method=m)
     t0 = time.perf_counter()
     p = compute_partition(state_dict, x0, method=m)
     dt = time.perf_counter() - t0

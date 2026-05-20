@@ -17,6 +17,7 @@ from parx import viz  # noqa: F401 — expose parx.viz
 from parx import methods  # noqa: F401 — trigger method registration
 from parx.methods import get_method, list_methods
 from parx.io import iter_state_dicts
+from parx.precompile import precompile
 
 check_julia()
 
@@ -29,6 +30,7 @@ __all__ = [
     "list_methods",
     "load_network",
     "Partition",
+    "precompile",
     "Region",
 ]
 
