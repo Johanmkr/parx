@@ -94,6 +94,27 @@ class Partition:
 
         return D, g
 
+    # ── Local linearisation ───────────────────────────────────────────────────
+
+    def local_affine(self, region: Region) -> tuple[np.ndarray, np.ndarray]:
+        """The local affine map ``f(x) = A x + b`` for this region.
+
+        Walks the activation path layer by layer, gating inactive neurons.
+        ``A`` has shape ``(last_layer_out_dim, input_dim)`` and ``b`` has shape
+        ``(last_layer_out_dim,)``.  This is the network's representation up to
+        whichever final layer the partition was built with — typically the
+        last hidden ReLU layer's output, post-gating.
+        """
+        A = np.eye(self.input_dim)
+        c = np.zeros(self.input_dim)
+        for l, q in enumerate(region.activation_path):
+            W, b = self.weights[l], self.biases[l]
+            W_hat = W @ A
+            b_hat = W @ c + b
+            A = q[:, None] * W_hat
+            c = q * b_hat
+        return A, c
+
     # ── Routing ───────────────────────────────────────────────────────────────
 
     def route(self, X: np.ndarray) -> list[Region | None]:
@@ -135,19 +156,19 @@ class Partition:
         """Return regions whose activation path has exactly l layers."""
         return [r for r in self.regions if r.n_layers == l]
 
-    # ── Construction from Julia output ────────────────────────────────────────
+    # ── Construction from a method's RegionFindResult ─────────────────────────
 
     @classmethod
-    def _from_sparse_output(
+    def from_result(
         cls,
-        jl_result,
+        result,
         weights: list[np.ndarray],
         biases: list[np.ndarray],
     ) -> "Partition":
-        """Build a Partition from the tuple returned by find_regions_sparse."""
-        patterns  = np.array(jl_result[0])                    # (n_regions, total_bits)
-        offsets   = np.array(jl_result[1], dtype=np.int64)    # (n_layers+1,)  0-indexed
-        centroids = np.array(jl_result[2])                    # (n_regions, input_dim)
+        """Build a Partition from a ``RegionFindResult`` (any registered method)."""
+        patterns  = np.asarray(result.patterns)
+        offsets   = np.asarray(result.offsets, dtype=np.int64)
+        centroids = np.asarray(result.centroids)
 
         n_regions = patterns.shape[0]
         n_layers  = len(offsets) - 1

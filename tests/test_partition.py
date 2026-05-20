@@ -103,3 +103,42 @@ class TestRoute:
         p = Partition(regions=[r], weights=[W], biases=[b])
         results = p.route(np.array([[-1.0, -1.0]]))
         assert results[0] is None
+
+
+class TestLocalAffine:
+    def test_all_active_returns_full_map(self):
+        """When every neuron is active the local map equals W·x + b."""
+        W = np.array([[2.0, -1.0], [0.5, 3.0]])
+        b = np.array([0.1, -0.2])
+        r = Region([np.array([True, True])], centroid=np.zeros(2))
+        p = Partition(regions=[r], weights=[W], biases=[b])
+        A, c = p.local_affine(r)
+        np.testing.assert_allclose(A, W)
+        np.testing.assert_allclose(c, b)
+
+    def test_inactive_neuron_row_is_zero(self):
+        """Inactive neurons gate to a zero row in the local map."""
+        W = np.array([[2.0, -1.0], [0.5, 3.0]])
+        b = np.array([0.1, -0.2])
+        r = Region([np.array([True, False])], centroid=np.zeros(2))
+        p = Partition(regions=[r], weights=[W], biases=[b])
+        A, c = p.local_affine(r)
+        np.testing.assert_allclose(A[0], W[0])
+        np.testing.assert_allclose(A[1], np.zeros(2))
+        assert c[0] == pytest.approx(b[0])
+        assert c[1] == 0.0
+
+    def test_two_layer_composition(self):
+        """A two-layer all-active map composes as A2 (W2) · A1 (W1)."""
+        W1 = np.array([[1.0, 2.0], [-1.0, 0.5]])
+        b1 = np.array([0.0, 1.0])
+        W2 = np.array([[0.5, -1.0], [2.0, 0.0]])
+        b2 = np.array([1.0, -0.5])
+        r = Region(
+            [np.array([True, True]), np.array([True, True])],
+            centroid=np.zeros(2),
+        )
+        p = Partition(regions=[r], weights=[W1, W2], biases=[b1, b2])
+        A, c = p.local_affine(r)
+        np.testing.assert_allclose(A, W2 @ W1)
+        np.testing.assert_allclose(c, W2 @ b1 + b2)

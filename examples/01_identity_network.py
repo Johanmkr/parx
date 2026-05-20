@@ -43,21 +43,22 @@ def save(fig, stem: str) -> None:
         print(f"  (PNG skipped — run 'plotly_get_chrome' once to enable)")
 
 
-# ── Build network ─────────────────────────────────────────────────────────────
+# ── Build network and take its state dict ────────────────────────────────────
 model = nn.Sequential(nn.Linear(2, 2, bias=False), nn.ReLU(), nn.Linear(2, 1))
 with torch.no_grad():
     model[0].weight.copy_(torch.eye(2))
+state_dict = model.state_dict()
 
 print("Network: 2 → 2 (identity, no bias) → ReLU → 1")
 
-# ── Sparse partition ──────────────────────────────────────────────────────────
+# ── Sparse partition (from state_dict) ───────────────────────────────────────
 X = np.array([[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]])
-p_sparse = compute_partition(model, X, mode="sparse")
+p_sparse = compute_partition(state_dict, X, method="sparse_julia")
 print(f"\nSparse  | regions: {len(p_sparse)}")
 
-# ── Exact partition ───────────────────────────────────────────────────────────
+# ── Exact partition (state_dict + fast Julia path) ───────────────────────────
 x0 = np.array([1.0, 1.0])
-p_exact = compute_partition(model, x0, mode="exact")
+p_exact = compute_partition(state_dict, x0, method="exact_julia_fast")
 print(f"Exact   | regions: {len(p_exact)}")
 
 # ── Verification ──────────────────────────────────────────────────────────────

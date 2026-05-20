@@ -124,6 +124,39 @@ def _region_vertices_2d(
     return pts[np.argsort(angles)]
 
 
+# ── Color-by-metric helpers ──────────────────────────────────────────────────
+#
+# Each helper has signature ``(partition, region) -> float`` so it can be passed
+# as the ``color_by=`` callable to ``plot_partition_2d``.  Helpers derive a
+# scalar from the region's local affine map ``f(x) = A x + b``.
+
+def affine_frobenius(partition: Partition, region: Region) -> float:
+    """Frobenius norm ``‖A‖_F`` of the region's local affine map."""
+    A, _ = partition.local_affine(region)
+    return float(np.linalg.norm(A, ord="fro"))
+
+
+def affine_spectral(partition: Partition, region: Region) -> float:
+    """Spectral norm (top singular value) of A — the local Lipschitz constant."""
+    A, _ = partition.local_affine(region)
+    if A.size == 0:
+        return 0.0
+    return float(np.linalg.svd(A, compute_uv=False)[0])
+
+
+def affine_det(partition: Partition, region: Region) -> float:
+    """Determinant of A.  Raises ``ValueError`` if A is not square."""
+    A, _ = partition.local_affine(region)
+    if A.shape[0] != A.shape[1]:
+        raise ValueError(f"affine_det requires square A, got shape {A.shape}")
+    return float(np.linalg.det(A))
+
+
+def active_neuron_count(_partition: Partition, region: Region) -> float:
+    """Total number of active neurons across all layers of the path."""
+    return float(sum(int(q.sum()) for q in region.activation_path))
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def plot_partition_2d(
@@ -134,6 +167,10 @@ def plot_partition_2d(
     *,
     domain: tuple[tuple[float, float], tuple[float, float]] | None = None,
     layer: int | None = None,
+    color_by=affine_frobenius,
+    color_label: str | None = None,
+    log_color: bool = False,
+    colorscale: str = "Viridis",
 ) -> go.Figure:
     """Draw each linear region as a filled, crisp polygon.
 
@@ -160,6 +197,21 @@ def plot_partition_2d(
         ``layer=1`` shows the regions induced by just the first ReLU layer;
         ``layer=partition.n_layers`` (the default) shows full leaf regions.
         Must satisfy ``1 <= layer <= partition.n_layers``.
+    color_by : callable, default :func:`affine_frobenius`
+        Callable ``(partition, region) -> float`` returning the scalar that
+        determines each region's colour.  Built-in helpers in this module:
+        :func:`affine_frobenius` (default — ``‖A‖_F``),
+        :func:`affine_spectral` (local Lipschitz constant),
+        :func:`affine_det`, :func:`active_neuron_count`.  Pass ``None`` to
+        disable the metric mapping and revert to the discrete Turbo palette.
+    color_label : str or None
+        Colourbar title.  When ``None``, derived from ``color_by.__name__``.
+    log_color : bool
+        If ``True``, the metric is mapped onto the colorscale via ``log10``
+        (clamped at ``1e-12``).  Useful when ``‖A‖`` spans orders of magnitude.
+    colorscale : str
+        Any Plotly colorscale name (``"Viridis"`` default, ``"Turbo"``,
+        ``"Plasma"``, …).
 
     Returns
     -------
@@ -200,9 +252,30 @@ def plot_partition_2d(
         x_range = x_range or auto_x
         y_range = y_range or auto_y
 
-    colors = px.colors.sample_colorscale(
-        "Turbo", [i / max(n - 1, 1) for i in range(n)]
-    )
+    if color_by is None:
+        # Fallback: discrete Turbo palette, no colourbar, no per-region metric.
+        colors = px.colors.sample_colorscale(
+            "Turbo", [i / max(n - 1, 1) for i in range(n)]
+        )
+        metrics  = None
+        scaled   = None
+        m_min    = m_max = None
+        label_str = None
+    else:
+        metrics = np.array(
+            [color_by(partition, r) for r in plot_regions], dtype=float
+        )
+        if log_color:
+            scaled = np.log10(np.maximum(metrics, 1e-12))
+        else:
+            scaled = metrics
+        m_min, m_max = float(scaled.min()), float(scaled.max())
+        if m_max - m_min < 1e-12:
+            normed = np.zeros_like(scaled)
+        else:
+            normed = (scaled - m_min) / (m_max - m_min)
+        colors    = px.colors.sample_colorscale(colorscale, normed)
+        label_str = color_label or getattr(color_by, "__name__", "metric")
 
     depth_str = f"layer {layer}" if layer is not None else "all layers"
     fig = go.Figure()
@@ -212,10 +285,15 @@ def plot_partition_2d(
         if verts is None:
             continue
 
-        xs = np.append(verts[:, 0], verts[0, 0])   # close the polygon
+        xs = np.append(verts[:, 0], verts[0, 0])
         ys = np.append(verts[:, 1], verts[0, 1])
 
-        label = _activation_label(region)
+        hover_lines = []
+        if metrics is not None:
+            hover_lines.append(f"{label_str}: {metrics[i]:.4g}")
+        hover_lines.append(_activation_label(region))
+        hover_text = "<br>".join(hover_lines)
+
         fig.add_trace(
             go.Scatter(
                 x=xs, y=ys,
@@ -226,7 +304,30 @@ def plot_partition_2d(
                 opacity=0.75,
                 showlegend=False,
                 name=f"region {i}",
-                hovertemplate=f"{label}<extra></extra>",
+                hovertemplate=f"{hover_text}<extra></extra>",
+            )
+        )
+
+    # Add a hidden marker trace just to expose the colorbar.  The markers
+    # themselves are invisible (opacity=0) and placed inside the view; Plotly
+    # surfaces the colorscale via showscale=True on the marker.
+    if metrics is not None:
+        cb_title = label_str + (" (log10)" if log_color else "")
+        fig.add_trace(
+            go.Scatter(
+                x=[None], y=[None],
+                mode="markers",
+                marker=dict(
+                    color=[m_min, m_max],
+                    colorscale=colorscale,
+                    cmin=m_min,
+                    cmax=m_max,
+                    showscale=True,
+                    opacity=0,
+                    colorbar=dict(title=cb_title, thickness=14),
+                ),
+                hoverinfo="skip",
+                showlegend=False,
             )
         )
 
@@ -234,7 +335,7 @@ def plot_partition_2d(
         xaxis=dict(range=list(x_range), title="x₁", constrain="domain"),
         yaxis=dict(range=list(y_range), title="x₂", scaleanchor="x"),
         title=f"Linear regions — {depth_str}  ({n} regions)",
-        width=520,
+        width=620 if metrics is not None else 520,
         height=500,
     )
     return fig

@@ -85,9 +85,14 @@ def _from_state_dict(
     )
     weights, biases = [], []
     for wk in wkeys:
+        W = _as_f64(state_dict[wk])
+        weights.append(W)
         bk = wk.replace(".weight", ".bias")
-        weights.append(_as_f64(state_dict[wk]))
-        biases.append(_as_f64(state_dict[bk]))
+        if bk in state_dict:
+            biases.append(_as_f64(state_dict[bk]))
+        else:
+            # Linear layer with bias=False — emit zeros so downstream math is uniform.
+            biases.append(np.zeros(W.shape[0], dtype=np.float64))
     return weights, biases
 
 

@@ -25,30 +25,36 @@ def simple_partition():
     with torch.no_grad():
         model[0].weight.copy_(torch.eye(2))
     X = np.array([[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]])
-    return compute_partition(model, X, mode="sparse")
+    return compute_partition(model, X, method="sparse_julia")
 
 
 # ── plot_partition_2d ─────────────────────────────────────────────────────────
+
+def _polygon_traces(fig):
+    """Polygon traces only — exclude the hidden marker trace that exposes the colorbar."""
+    return [t for t in fig.data if t.mode == "lines" and t.fill == "toself"]
+
 
 def test_plot_partition_2d_returns_figure(simple_partition):
     from parx.viz import plot_partition_2d
     fig = plot_partition_2d(simple_partition)   # auto-range
     assert isinstance(fig, go.Figure)
-    assert len(fig.data) == len(simple_partition)
+    polys = _polygon_traces(fig)
+    assert len(polys) == len(simple_partition)
     assert all(isinstance(t, go.Scatter) for t in fig.data)
 
 
 def test_plot_partition_2d_polygons_have_vertices(simple_partition):
     from parx.viz import plot_partition_2d
     fig = plot_partition_2d(simple_partition)
-    for trace in fig.data:
+    for trace in _polygon_traces(fig):
         assert len(trace.x) >= 4  # at least triangle + closing point
 
 
 def test_plot_partition_2d_hover_contains_activation(simple_partition):
     from parx.viz import plot_partition_2d
     fig = plot_partition_2d(simple_partition)
-    for trace in fig.data:
+    for trace in _polygon_traces(fig):
         # Every hover template should mention at least one layer activation
         assert "L1:" in trace.hovertemplate
 
@@ -95,6 +101,50 @@ def test_plot_partition_2d_rejects_non_2d():
     )
     with pytest.raises(ValueError, match="input_dim=2"):
         plot_partition_2d(p)
+
+
+# ── color_by metric ───────────────────────────────────────────────────────────
+
+def test_color_by_default_adds_colorbar(simple_partition):
+    from parx.viz import plot_partition_2d
+    fig = plot_partition_2d(simple_partition)
+    cbars = [t for t in fig.data if getattr(t.marker, "showscale", False)]
+    assert len(cbars) == 1
+
+
+def test_color_by_none_skips_colorbar(simple_partition):
+    from parx.viz import plot_partition_2d
+    fig = plot_partition_2d(simple_partition, color_by=None)
+    assert len(_polygon_traces(fig)) == len(simple_partition)
+    cbars = [t for t in fig.data if getattr(t.marker, "showscale", False)]
+    assert cbars == []
+
+
+def test_color_by_metric_appears_in_hover(simple_partition):
+    from parx.viz import plot_partition_2d, affine_spectral
+    fig = plot_partition_2d(simple_partition, color_by=affine_spectral)
+    for trace in _polygon_traces(fig):
+        assert "affine_spectral:" in trace.hovertemplate
+
+
+def test_color_by_custom_callable(simple_partition):
+    from parx.viz import plot_partition_2d
+    fig = plot_partition_2d(
+        simple_partition,
+        color_by=lambda _p, _r: 42.0,
+        color_label="constant",
+    )
+    for trace in _polygon_traces(fig):
+        assert "constant: 42" in trace.hovertemplate
+
+
+def test_color_by_log_color_runs(simple_partition):
+    from parx.viz import plot_partition_2d, affine_frobenius
+    fig = plot_partition_2d(
+        simple_partition, color_by=affine_frobenius, log_color=True
+    )
+    cbars = [t for t in fig.data if getattr(t.marker, "showscale", False)]
+    assert cbars and "log10" in cbars[0].marker.colorbar.title.text
 
 
 # ── plot_region_counts ────────────────────────────────────────────────────────

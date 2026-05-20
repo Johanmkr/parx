@@ -174,7 +174,7 @@ def test_exact_centroids_satisfy_halfspaces():
         model[0].weight.copy_(torch.eye(2))
 
     x0        = np.array([1.0, 1.0])
-    partition = compute_partition(model, x0, mode="exact")
+    partition = compute_partition(model, x0, method="exact_julia")
 
     assert len(partition) == 4
     for region in partition.regions:
@@ -194,7 +194,7 @@ def test_exact_no_overlaps():
     with torch.no_grad():
         model[0].weight.copy_(torch.eye(2))
 
-    partition = compute_partition(model, np.array([1.0, 1.0]), mode="exact")
+    partition = compute_partition(model, np.array([1.0, 1.0]), method="exact_julia")
 
     rng = np.random.default_rng(0)
     X = rng.uniform(-2, 2, (500, 2))
@@ -211,7 +211,7 @@ def test_exact_covers_space():
     with torch.no_grad():
         model[0].weight.copy_(torch.eye(2))
 
-    partition = compute_partition(model, np.array([1.0, 1.0]), mode="exact")
+    partition = compute_partition(model, np.array([1.0, 1.0]), method="exact_julia")
 
     rng = np.random.default_rng(0)
     X = rng.uniform(-2, 2, (500, 2))
@@ -235,7 +235,7 @@ def test_compute_partition_sparse():
         model[0].weight.copy_(torch.eye(2))
 
     X = np.array([[1., 1.], [1., -1.], [-1., 1.], [-1., -1.]])
-    partition = compute_partition(model, X, mode="sparse")
+    partition = compute_partition(model, X, method="sparse_julia")
 
     assert len(partition) == 4
     assert partition.input_dim == 2

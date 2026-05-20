@@ -13,7 +13,10 @@ from parx._julia_init import ensure_julia  # noqa: F401
 from parx.network import load_network
 from parx.partition import Partition
 from parx.region import Region
-from parx import viz  # noqa: F401  — expose parx.viz
+from parx import viz  # noqa: F401 — expose parx.viz
+from parx import methods  # noqa: F401 — trigger method registration
+from parx.methods import get_method, list_methods
+from parx.io import iter_state_dicts
 
 check_julia()
 
@@ -22,6 +25,8 @@ __all__ = [
     "__version__",
     "compute_partition",
     "ensure_julia",
+    "iter_state_dicts",
+    "list_methods",
     "load_network",
     "Partition",
     "Region",
@@ -29,46 +34,41 @@ __all__ = [
 
 
 def compute_partition(
-    model,
+    source,
     data: np.ndarray,
     *,
-    mode: str = "sparse",
+    method: str = "sparse_julia",
     include_output_layer: bool = False,
+    **method_kwargs,
 ) -> Partition:
     """Find the linear regions of a ReLU network.
 
     Parameters
     ----------
-    model:
-        ``nn.Module``, PyTorch ``state_dict``, or path to a ``.pth`` / ``.h5``
-        file.
+    source:
+        A single network's parameters.  Accepted forms: PyTorch ``state_dict``,
+        ``nn.Module``, or path to a ``.pth`` / ``.h5`` file.  For per-epoch
+        analyses, iterate over state dicts at the call site (see
+        :func:`parx.io.iter_state_dicts`).
     data:
-        Input points, shape ``(N, input_dim)``.  Required for ``mode="sparse"``;
-        used only to pick a starting point for ``mode="exact"``.
-    mode:
-        ``"sparse"`` (default) — discover only regions that contain at least one
-        point from *data*.  Fast; scales with dataset size.
-        ``"exact"`` — exhaustively enumerate all feasible regions via DFS and
-        facet-flipping.  Not yet implemented.
+        Input points, shape ``(N, input_dim)``.  Sparse methods scan the array
+        for activation patterns; exact methods use ``data[0]`` as the DFS
+        starting point.
+    method:
+        Name of a registered region-finding method.  Built-ins:
+        ``"sparse_julia"`` (default), ``"exact_julia"``, ``"sparse_python"``,
+        ``"exact_python"``.  See :func:`parx.list_methods`.
     include_output_layer:
-        Include the final linear layer in the partition.  Defaults to ``False``.
+        Include the final linear layer in the partition.  Defaults to ``False``
+        because only hidden ReLU layers define the polyhedral partition.
+    **method_kwargs:
+        Forwarded verbatim to the chosen method's function.
 
     Returns
     -------
     Partition
     """
-    weights, biases = load_network(model, include_output_layer=include_output_layer)
-
-    jl = ensure_julia()
-
-    if mode == "sparse":
-        result = jl.LinearRegions.find_regions_sparse(weights, biases, data)
-        return Partition._from_sparse_output(result, weights, biases)
-
-    if mode == "exact":
-        data_arr = np.asarray(data, dtype=float)
-        x0 = data_arr[0] if data_arr.ndim == 2 else data_arr.ravel()
-        result = jl.LinearRegions.find_regions_exact(weights, biases, x0)
-        return Partition._from_sparse_output(result, weights, biases)
-
-    raise ValueError(f"Unknown mode {mode!r}. Choose 'sparse' or 'exact'.")
+    weights, biases = load_network(source, include_output_layer=include_output_layer)
+    fn = get_method(method)
+    result = fn(weights, biases, data, **method_kwargs)
+    return Partition.from_result(result, weights, biases)
