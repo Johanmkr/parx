@@ -37,7 +37,9 @@ dependencies = [
     "juliacall>=0.9.0",
     "torch>=2.0",
     "numpy>=1.24",
+    "scipy>=1.10",
     "plotly>=6.7.0",
+    "nbformat>=5.10.4",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +49,7 @@ dev = [
     "pytest-cov",
     "ruff",
     "mypy",
+    "kaleido",
 ]
 
 [project.urls]
@@ -59,7 +62,7 @@ Issues = "https://github.com/Johanmkr/parx/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-parx = ["julia/*"]
+parx = ["julia/*", "juliapkg.json"]
 
 # --- Ruff (linter + formatter) ---
 [tool.ruff]

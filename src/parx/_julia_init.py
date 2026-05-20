@@ -13,26 +13,24 @@ _jl = None
 def ensure_julia():
     """Initialize the Julia runtime and load the LinearRegions module.
 
-    Sets JULIA_PROJECT to the embedded julia/ environment before the
-    juliacall import so the correct packages are available. Safe to call
-    multiple times — only runs once per process.
+    juliacall/juliapkg manages its own Julia project environment, so we load
+    our LinearRegions module via include() rather than registering it as a
+    package.  Safe to call multiple times — only runs once per process.
     """
     global _julia_initialized, _jl
 
     if _julia_initialized:
         return _jl
 
-    julia_project = Path(__file__).parent / "julia"
-
     os.environ.setdefault("JULIA_NUM_THREADS", "auto")
-    os.environ["JULIA_PROJECT"] = str(julia_project)
+    # Let Julia own signal handling so its GC threads don't conflict with
+    # Python's signal machinery.  Must be set before juliacall is imported.
+    os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
 
     from juliacall import Main as jl
 
-    # Instantiate in case Manifest is missing (e.g. fresh clone without
-    # running `julia --project=. -e "using Pkg; Pkg.instantiate()"`)
-    jl.seval("using Pkg; Pkg.instantiate()")
-    jl.seval("using LinearRegions")
+    julia_file = Path(__file__).parent / "julia" / "LinearRegions.jl"
+    jl.seval(f'include("{julia_file.as_posix()}")')
 
     _jl = jl
     _julia_initialized = True
