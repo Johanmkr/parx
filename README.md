@@ -1,129 +1,140 @@
-# polarx
+# parx - Polyhedral Affine Region eXplorer
 
-**POLyhedral Activation Region Xplorer**
+parx exactly enumerates and analyzes linear (polyhedral activation) regions of ReLU neural networks.
 
-`polarx` exactly enumerates and represents the linear regions (polyhedral activation regions) of ReLU-based neural networks. The combinatorially heavy computations are performed in Julia for performance, while the Python layer handles network loading, user-facing API, and integration with the PyTorch ecosystem.
+- Python layer: network loading, user API, visualization, verification
+- Julia layer (via juliacall): region enumeration algorithms and heavy combinatorial work
 
-> ⚠️ **Alpha software.** The API is not yet stable.
+> Alpha software: the API is still evolving.
 
----
+## What parx computes
 
-## What it does
+A ReLU network is piecewise affine. parx computes the partition of input space into convex polytopes (linear regions), where each region corresponds to a fixed activation pattern.
 
-A neural network with ReLU activations is a continuous piecewise-linear (CPWL) function. Its input space is partitioned into convex polytopes — *linear regions* — inside each of which the network behaves as a single affine map. `polarx` computes that partition exactly, without sampling or approximation.
+## Current implementation status
 
----
+Implemented now:
+- Sparse enumeration: `compute_partition(..., mode="sparse")`
+- Exact enumeration: `compute_partition(..., mode="exact")`
+- Geometry reconstruction: `Partition.halfspaces(region)` returns `D, g` for `D x <= g`
+- Routing: `Partition.route(X)` maps points to known regions (or `None` for uncovered sparse regions)
+- Region filtering: `Partition.regions_at_layer(l)`
+- Verification helpers: `parx.verify.check_no_overlaps`, `parx.verify.check_covers_space`
+- 2D plotting helpers in `parx.viz`:
+  - `plot_partition_2d(partition, domain=..., layer=...)`
+  - `plot_region_counts(partition)`
+  - `plot_halfspaces(partition, region, ...)`
 
 ## Requirements
 
-### Python
-- Python ≥ 3.10
-- Dependencies are managed automatically by pip/uv (see below)
+- Python 3.10+
+- Julia 1.10+ available on PATH
 
-### Julia
-Julia must be installed separately and available on your `PATH`. The recommended way is via [juliaup](https://github.com/JuliaLang/juliaup):
+Install Julia (recommended with juliaup):
 
-**macOS / Linux:**
 ```bash
 curl -fsSL https://install.julialang.org | sh
+julia --version
 ```
-
-**Windows:**
-```powershell
-winget install julia -s msstore
-```
-
-Verify your installation:
-```bash
-julia --version   # should print Julia 1.10 or newer
-```
-
-> On first use, `polarx` will automatically instantiate the embedded Julia environment and download Julia dependencies. This takes a minute or two and only happens once.
-
----
 
 ## Installation
 
 ```bash
-pip install polarx
+pip install parx
 ```
 
-With optional HDF5 support (for `.h5` network files):
+Optional HDF5 support (`.h5` models):
+
 ```bash
-pip install polarx[h5]
+pip install "parx[h5]"
 ```
 
----
-
-## Quick Start
+## Quick start
 
 ```python
-import polarx
+# juliacall must be imported before torch
+import parx
 
-# Load a network from a PyTorch checkpoint
-network = polarx.load("my_model.pth")
+import numpy as np
+import torch
+import torch.nn as nn
 
-# Compute the polyhedral partition over a bounded input domain
-partition = polarx.compute_partition(network, domain=...)
+from parx import compute_partition
+from parx.viz import plot_partition_2d
 
-# Inspect regions
-print(f"Number of linear regions: {len(partition)}")
-for region in partition:
-    print(region.affine_map)   # the A, b of Ax + b on this region
-    print(region.vertices)     # vertices of the polytope
+model = nn.Sequential(
+    nn.Linear(2, 5), nn.ReLU(),
+    nn.Linear(5, 5), nn.ReLU(),
+    nn.Linear(5, 1),
+)
+
+X = np.random.uniform(-1.0, 1.0, size=(300, 2))
+partition = compute_partition(model, X, mode="sparse")
+
+print(f"regions: {len(partition)}")
+
+# Explicit plotting domain and layer-specific visualization
+fig = plot_partition_2d(
+    partition,
+    domain=((-1.0, 1.0), (-1.0, 1.0)),
+    layer=1,
+)
+fig.show()
 ```
 
----
+## Examples
 
-## Development Setup
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. Quick version:
+Run from repository root:
 
 ```bash
-git clone https://github.com/yourname/polarx
-cd polarx
+python examples/01_identity_network.py
+python examples/02_random_mlp.py
+```
+
+Notebook version of Example 2:
+
+- `examples/02_random_mlp.ipynb`
+
+## Development setup
+
+```bash
 uv venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
 pytest
 ```
 
----
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contributor workflow.
 
 ## Architecture
 
+```text
+src/parx/
+  __init__.py      public API (compute_partition, load_network, etc.)
+  network.py       load model/weights from nn.Module, state_dict, .pth, .h5
+  partition.py     Partition object + halfspaces/route/filter helpers
+  region.py        Region object (activation_path, centroid, metadata)
+  verify.py        overlap/coverage checks on sampled points
+  viz.py           Plotly visualizations for partitions and halfspaces
+  julia/
+    LinearRegions.jl
 ```
-polarx/
-├── Python layer        network loading, user API, data conversion
-└── Julia layer         polyhedral enumeration, linear algebra, threading
-```
 
-The Julia runtime is embedded via [juliacall](https://github.com/cjdoris/PythonCall.jl). Julia code runs in parallel using native threads (`Threads.@spawn`). The number of threads defaults to the number of available CPU cores and can be overridden via the `JULIA_NUM_THREADS` environment variable.
-
----
-
-## Related Work
-
-- [SplineCam](https://github.com/AhmedImtiazPrio/splinecam) — exact 2D-slice visualization of DN geometry (CVPR 2023)
-- [relu_edge_subdivision](https://github.com/arturs-berzins/relu_edge_subdivision) — GPU-based polyhedral complex extraction (ICML 2023)
-
----
+Julia threading defaults to available cores (override with `JULIA_NUM_THREADS`).
 
 ## Citation
 
-If you use `polarx` in your research, please cite:
+If you use parx in research, please cite the repository and this software name:
 
 ```bibtex
-@software{polarx,
-  author  = {Your Name},
-  title   = {polarx: POLyhedral Activation Region Xplorer},
-  year    = {2025},
-  url     = {https://github.com/yourname/polarx}
+@software{parx,
+  author = {Johan Mylius-Kroken},
+  title = {parx - Polyhedral Affine Region eXplorer},
+  year = {2026},
+  url = {https://github.com/Johanmkr/parx}
 }
 ```
 
----
-
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+MIT. See [LICENCE](LICENCE).

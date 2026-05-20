@@ -131,6 +131,9 @@ def plot_partition_2d(
     x_range: tuple[float, float] | None = None,
     y_range: tuple[float, float] | None = None,
     pad: float = 0.3,
+    *,
+    domain: tuple[tuple[float, float], tuple[float, float]] | None = None,
+    layer: int | None = None,
 ) -> go.Figure:
     """Draw each linear region as a filled, crisp polygon.
 
@@ -142,12 +145,21 @@ def plot_partition_2d(
     ----------
     partition : Partition
         Must have ``input_dim == 2``.
+    domain : ((float, float), (float, float)) or None
+        Explicit ``(x_range, y_range)`` bounds for the plot. When provided,
+        these bounds are used directly and no auto-ranging is performed.
     x_range, y_range : (float, float) or None
         Axis extents.  When ``None`` (default) the range is auto-computed from
         the arrangement of hyperplane intersection points so all regions are
         visible.  Unbounded regions are clipped to the computed box.
     pad : float
         Fractional padding added around the auto-computed bounding box.
+    layer : int or None
+        If given (1-indexed), collapse all leaf regions to their activation-path
+        prefix of this length and plot the resulting coarser partition.
+        ``layer=1`` shows the regions induced by just the first ReLU layer;
+        ``layer=partition.n_layers`` (the default) shows full leaf regions.
+        Must satisfy ``1 <= layer <= partition.n_layers``.
 
     Returns
     -------
@@ -158,11 +170,32 @@ def plot_partition_2d(
             f"plot_partition_2d requires input_dim=2, got {partition.input_dim}"
         )
 
-    n = len(partition)
+    if layer is not None and not (1 <= layer <= partition.n_layers):
+        raise ValueError(
+            f"layer must be between 1 and {partition.n_layers}, got {layer}"
+        )
+
+    # Build the list of regions to plot (possibly coarser than leaf level)
+    if layer is not None:
+        seen: dict[tuple[bytes, ...], Region] = {}
+        for r in partition.regions:
+            key = tuple(r.activation_path[l].tobytes() for l in range(layer))
+            if key not in seen:
+                seen[key] = Region(
+                    activation_path=r.activation_path[:layer],
+                    centroid=r.centroid,
+                )
+        plot_regions = list(seen.values())
+    else:
+        plot_regions = partition.regions
+
+    n = len(plot_regions)
     if n == 0:
         return go.Figure()
 
-    if x_range is None or y_range is None:
+    if domain is not None:
+        x_range, y_range = domain
+    elif x_range is None or y_range is None:
         auto_x, auto_y = _auto_range_2d(partition, pad=pad)
         x_range = x_range or auto_x
         y_range = y_range or auto_y
@@ -171,8 +204,9 @@ def plot_partition_2d(
         "Turbo", [i / max(n - 1, 1) for i in range(n)]
     )
 
+    depth_str = f"layer {layer}" if layer is not None else "all layers"
     fig = go.Figure()
-    for i, region in enumerate(partition.regions):
+    for i, region in enumerate(plot_regions):
         D, g = partition.halfspaces(region)
         verts = _region_vertices_2d(D, g, x_range, y_range)
         if verts is None:
@@ -199,7 +233,7 @@ def plot_partition_2d(
     fig.update_layout(
         xaxis=dict(range=list(x_range), title="x₁", constrain="domain"),
         yaxis=dict(range=list(y_range), title="x₂", scaleanchor="x"),
-        title=f"Linear regions  ({n} regions)",
+        title=f"Linear regions — {depth_str}  ({n} regions)",
         width=520,
         height=500,
     )

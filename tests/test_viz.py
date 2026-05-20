@@ -53,6 +53,39 @@ def test_plot_partition_2d_hover_contains_activation(simple_partition):
         assert "L1:" in trace.hovertemplate
 
 
+def test_plot_partition_2d_uses_explicit_domain(simple_partition):
+    from parx.viz import plot_partition_2d
+
+    domain = ((-1.5, 1.5), (-0.75, 0.75))
+    fig = plot_partition_2d(simple_partition, domain=domain)
+
+    assert tuple(fig.layout.xaxis.range) == domain[0]
+    assert tuple(fig.layout.yaxis.range) == domain[1]
+
+
+def test_plot_partition_2d_layer_coarsens_regions(simple_partition):
+    from parx.viz import plot_partition_2d
+
+    # Identity network has 1 ReLU layer → at layer=1 and all-layers count must match
+    fig_leaf = plot_partition_2d(simple_partition, layer=simple_partition.n_layers)
+    fig_all  = plot_partition_2d(simple_partition)
+    assert len(fig_leaf.data) == len(fig_all.data)
+
+    # layer=1 must produce ≤ leaf count (same here, but at most)
+    fig_l1 = plot_partition_2d(simple_partition, layer=1)
+    assert len(fig_l1.data) <= len(fig_all.data)
+
+
+def test_plot_partition_2d_layer_out_of_range(simple_partition):
+    from parx.viz import plot_partition_2d
+
+    with pytest.raises(ValueError, match="layer must be between"):
+        plot_partition_2d(simple_partition, layer=0)
+
+    with pytest.raises(ValueError, match="layer must be between"):
+        plot_partition_2d(simple_partition, layer=simple_partition.n_layers + 1)
+
+
 def test_plot_partition_2d_rejects_non_2d():
     from parx.viz import plot_partition_2d
     p = Partition(

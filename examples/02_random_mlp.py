@@ -29,6 +29,7 @@ OUT.mkdir(exist_ok=True)
 
 SEED = 42
 RANGE = (-1.0, 1.0)   # training data domain
+DOMAIN = (RANGE, RANGE)
 
 torch.manual_seed(SEED)
 rng = np.random.default_rng(SEED)
@@ -87,12 +88,12 @@ print(f"\nSparse routing: {n_covered}/{len(X_train)} training points covered "
 # ── Figures ───────────────────────────────────────────────────────────────────
 print("\nFigures (opening in browser):")
 
-fig_sparse = plot_partition_2d(p_sparse)
+fig_sparse = plot_partition_2d(p_sparse, domain=DOMAIN)
 fig_sparse.update_layout(title=f"Sparse partition  ({len(p_sparse)} regions)")
 fig_sparse.show()
 save(fig_sparse, "02_sparse_partition")
 
-fig_exact = plot_partition_2d(p_exact)
+fig_exact = plot_partition_2d(p_exact, domain=DOMAIN)
 fig_exact.update_layout(title=f"Exact partition  ({len(p_exact)} regions)")
 fig_exact.show()
 save(fig_exact, "02_exact_partition")

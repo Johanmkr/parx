@@ -28,6 +28,7 @@ OUT = Path(__file__).parent / "output"
 OUT.mkdir(exist_ok=True)
 
 RANGE = (-2.0, 2.0)   # the quadrant structure is at x=0, y=0
+DOMAIN = (RANGE, RANGE)
 
 
 def save(fig, stem: str) -> None:
@@ -79,7 +80,7 @@ for i, r in enumerate(p_exact.regions):
 # ── Visualisations ────────────────────────────────────────────────────────────
 print("\nFigures (opening in browser):")
 
-fig1 = plot_partition_2d(p_exact)
+fig1 = plot_partition_2d(p_exact, domain=DOMAIN)
 fig1.show()
 save(fig1, "01_partition_2d")
 
