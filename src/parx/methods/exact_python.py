@@ -19,7 +19,7 @@ from parx._lp import chebyshev_center as _chebyshev_center
 from parx.methods import RegionFindResult, register_method
 
 _ZERO_NORM_TOL = 1e-10
-_SLACK_TOL     = 1e-8
+_SLACK_TOL = 1e-8
 
 
 # ── LP primitives ─────────────────────────────────────────────────────────────
@@ -35,9 +35,9 @@ def _active_local_indices(
     Solve, for each row, ``max d_i · x`` s.t. the *other* constraints — if the
     optimum exceeds the right-hand side, the constraint is binding.
     """
-    n_full  = D_full.shape[0]
+    n_full = D_full.shape[0]
     n_local = n_full - n_prev
-    n_vars  = D_full.shape[1]
+    n_vars = D_full.shape[1]
     active: list[int] = []
 
     for i in range(n_local):
@@ -73,17 +73,18 @@ def _active_local_indices(
 
 # ── DFS ───────────────────────────────────────────────────────────────────────
 
+
 def _dfs_exact(
-    weights:  list[np.ndarray],
-    biases:   list[np.ndarray],
-    layer:    int,
-    A_prev:   np.ndarray,
-    c_prev:   np.ndarray,
-    D_prev:   np.ndarray,
-    g_prev:   np.ndarray,
-    q_path:   list[np.ndarray],
+    weights: list[np.ndarray],
+    biases: list[np.ndarray],
+    layer: int,
+    A_prev: np.ndarray,
+    c_prev: np.ndarray,
+    D_prev: np.ndarray,
+    g_prev: np.ndarray,
+    q_path: list[np.ndarray],
     x_parent: np.ndarray,
-    results:  list[tuple[list[np.ndarray], np.ndarray]],
+    results: list[tuple[list[np.ndarray], np.ndarray]],
 ) -> None:
     if layer >= len(weights):
         results.append(([q.copy() for q in q_path], x_parent.copy()))
@@ -96,13 +97,13 @@ def _dfs_exact(
 
     q_start = (W_hat @ x_parent + b_hat) > 0
     visited: set[bytes] = {q_start.tobytes()}
-    queue:   list[np.ndarray] = [q_start]
+    queue: list[np.ndarray] = [q_start]
 
     while queue:
         q_curr = queue.pop(0)
-        s        = -2.0 * q_curr.astype(np.float64) + 1.0
-        D_local  = s[:, None] * W_hat
-        g_local  = -(s * b_hat)
+        s = -2.0 * q_curr.astype(np.float64) + 1.0
+        D_local = s[:, None] * W_hat
+        g_local = -(s * b_hat)
 
         D_full = np.vstack([D_prev, D_local])
         g_full = np.concatenate([g_prev, g_local])
@@ -115,10 +116,13 @@ def _dfs_exact(
         c_next = q_curr.astype(np.float64) * b_hat
 
         _dfs_exact(
-            weights, biases,
+            weights,
+            biases,
             layer + 1,
-            A_next, c_next,
-            D_full, g_full,
+            A_next,
+            c_next,
+            D_full,
+            g_full,
             q_path + [q_curr.copy()],
             x_int,
             results,
@@ -135,6 +139,7 @@ def _dfs_exact(
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
+
 @register_method("exact_python")
 def find(
     weights: list[np.ndarray],
@@ -144,16 +149,16 @@ def find(
 ) -> RegionFindResult:
     """Exhaustively enumerate all feasible regions via DFS + facet-flipping."""
     arr = np.asarray(data, dtype=float)
-    x0  = arr[0] if arr.ndim == 2 else arr.ravel()
+    x0 = arr[0] if arr.ndim == 2 else arr.ravel()
 
-    n_layers    = len(weights)
+    n_layers = len(weights)
     layer_sizes = [w.shape[0] for w in weights]
-    input_dim   = weights[0].shape[1]
-    total_bits  = sum(layer_sizes)
+    input_dim = weights[0].shape[1]
+    total_bits = sum(layer_sizes)
 
     offsets = np.zeros(n_layers + 1, dtype=np.int64)
-    for l in range(n_layers):
-        offsets[l + 1] = offsets[l] + layer_sizes[l]
+    for layer_idx in range(n_layers):
+        offsets[layer_idx + 1] = offsets[layer_idx] + layer_sizes[layer_idx]
 
     results: list[tuple[list[np.ndarray], np.ndarray]] = []
     _dfs_exact(
@@ -170,12 +175,10 @@ def find(
     )
 
     n_regions = len(results)
-    patterns  = np.zeros((n_regions, total_bits), dtype=np.int8)
+    patterns = np.zeros((n_regions, total_bits), dtype=np.int8)
     centroids = np.zeros((n_regions, input_dim), dtype=np.float64)
     for i, (path, centroid) in enumerate(results):
-        patterns[i]  = np.concatenate([q.astype(np.int8) for q in path])
+        patterns[i] = np.concatenate([q.astype(np.int8) for q in path])
         centroids[i] = centroid
 
-    return RegionFindResult(
-        patterns=patterns, offsets=offsets, centroids=centroids
-    )
+    return RegionFindResult(patterns=patterns, offsets=offsets, centroids=centroids)

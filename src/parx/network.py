@@ -31,7 +31,7 @@ def load_network(
         Each entry is a ``float64`` NumPy array.  Weight shape is
         ``(out_features, in_features)`` matching PyTorch convention.
     """
-    if isinstance(model, (str, Path)):
+    if isinstance(model, str | Path):
         weights, biases = _from_path(Path(model))
     elif isinstance(model, dict):
         weights, biases = _from_state_dict(model)
@@ -47,10 +47,12 @@ def load_network(
 
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
+
 def _from_path(path: Path) -> tuple[list[np.ndarray], list[np.ndarray]]:
     if path.suffix in (".h5", ".hdf5"):
         return _from_h5(path)
     import torch
+
     obj = torch.load(path, map_location="cpu", weights_only=False)
     return _from_state_dict(obj) if isinstance(obj, dict) else _from_module(obj)
 
@@ -103,7 +105,9 @@ def _from_module(model) -> tuple[list[np.ndarray], list[np.ndarray]]:
     for _, layer in model.named_modules():
         if isinstance(layer, nn.Linear):
             weights.append(_as_f64(layer.weight))
-            bias = layer.bias if layer.bias is not None else np.zeros(layer.out_features)
+            bias = (
+                layer.bias if layer.bias is not None else np.zeros(layer.out_features)
+            )
             biases.append(_as_f64(bias))
     return weights, biases
 

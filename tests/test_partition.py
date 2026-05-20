@@ -1,4 +1,5 @@
 """Tests for Region and Partition (pure Python, no Julia)."""
+
 import numpy as np
 import pytest
 
@@ -22,10 +23,10 @@ def _quadrant_partition() -> Partition:
     W = np.eye(2)
     b = np.zeros(2)
     regions = [
-        Region([np.array([True, True])],  centroid=np.array([ 1.0,  1.0])),
-        Region([np.array([True, False])], centroid=np.array([ 1.0, -1.0])),
-        Region([np.array([False, True])], centroid=np.array([-1.0,  1.0])),
-        Region([np.array([False, False])],centroid=np.array([-1.0, -1.0])),
+        Region([np.array([True, True])], centroid=np.array([1.0, 1.0])),
+        Region([np.array([True, False])], centroid=np.array([1.0, -1.0])),
+        Region([np.array([False, True])], centroid=np.array([-1.0, 1.0])),
+        Region([np.array([False, False])], centroid=np.array([-1.0, -1.0])),
     ]
     return Partition(regions=regions, weights=[W], biases=[b])
 
@@ -85,12 +86,14 @@ class TestRoute:
 
     def test_each_quadrant(self):
         p = _quadrant_partition()
-        X = np.array([
-            [ 1.0,  1.0],  # q = [T, T]
-            [ 1.0, -1.0],  # q = [T, F]
-            [-1.0,  1.0],  # q = [F, T]
-            [-1.0, -1.0],  # q = [F, F]
-        ])
+        X = np.array(
+            [
+                [1.0, 1.0],  # q = [T, T]
+                [1.0, -1.0],  # q = [T, F]
+                [-1.0, 1.0],  # q = [F, T]
+                [-1.0, -1.0],  # q = [F, F]
+            ]
+        )
         results = p.route(X)
         for i, r in enumerate(results):
             assert r is p.regions[i], f"point {i} routed to wrong region"

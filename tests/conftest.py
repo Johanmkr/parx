@@ -9,4 +9,5 @@ def julia_session():
     pure-Python tests are never blocked by Julia initialization.
     """
     from parx._julia_init import ensure_julia
+
     ensure_julia()

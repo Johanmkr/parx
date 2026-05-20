@@ -1,6 +1,5 @@
 """Tests on a randomly initialised [2→5→5→5→1] MLP."""
 # juliacall must be imported before torch
-from parx._julia_init import ensure_julia
 
 import numpy as np
 import pytest
@@ -18,14 +17,18 @@ def _julia(julia_session):
 def _mlp555(seed: int = 42) -> nn.Sequential:
     torch.manual_seed(seed)
     return nn.Sequential(
-        nn.Linear(2, 5), nn.ReLU(),
-        nn.Linear(5, 5), nn.ReLU(),
-        nn.Linear(5, 5), nn.ReLU(),
+        nn.Linear(2, 5),
+        nn.ReLU(),
+        nn.Linear(5, 5),
+        nn.ReLU(),
+        nn.Linear(5, 5),
+        nn.ReLU(),
         nn.Linear(5, 1),
     )
 
 
 # ── Sparse mode ───────────────────────────────────────────────────────────────
+
 
 def test_sparse_555_finds_regions():
     model = _mlp555()
@@ -36,7 +39,7 @@ def test_sparse_555_finds_regions():
 
     assert len(partition) > 0
     assert partition.input_dim == 2
-    assert partition.n_layers == 3   # 3 hidden layers; output excluded
+    assert partition.n_layers == 3  # 3 hidden layers; output excluded
 
 
 def test_sparse_555_centroids_satisfy_halfspaces():
@@ -68,7 +71,7 @@ def test_sparse_555_more_data_more_regions():
     """Passing more data can only find the same or more regions."""
     model = _mlp555()
     rng = np.random.default_rng(2)
-    X_small = rng.uniform(-1, 1, (20,  2))
+    X_small = rng.uniform(-1, 1, (20, 2))
     X_large = rng.uniform(-1, 1, (500, 2))
 
     p_small = compute_partition(model, X_small, method="sparse_julia")
@@ -78,6 +81,7 @@ def test_sparse_555_more_data_more_regions():
 
 
 # ── Exact mode ────────────────────────────────────────────────────────────────
+
 
 def test_exact_555_finds_regions():
     model = _mlp555()
@@ -131,7 +135,7 @@ def test_exact_555_no_overlaps():
     partition = _exact_555_partition()
 
     rng = np.random.default_rng(7)
-    X_uniform  = rng.uniform(-1, 1, (5000, 2))
+    X_uniform = rng.uniform(-1, 1, (5000, 2))
     X_boundary = sample_near_boundaries(partition, eps=1e-3)
     X_centroid = np.array([r.centroid for r in partition.regions])
     X = np.vstack([X_uniform, X_boundary, X_centroid])
@@ -142,9 +146,12 @@ def test_exact_555_no_overlaps():
         offending = []
         for i in bad_idx[:3]:
             members = [
-                j for j, r in enumerate(partition.regions)
-                if np.all(partition.halfspaces(r)[0] @ X[i]
-                          <= partition.halfspaces(r)[1] + 1e-8)
+                j
+                for j, r in enumerate(partition.regions)
+                if np.all(
+                    partition.halfspaces(r)[0] @ X[i]
+                    <= partition.halfspaces(r)[1] + 1e-8
+                )
             ]
             offending.append((X[i].tolist(), members))
         raise AssertionError(
@@ -165,14 +172,14 @@ def test_exact_555_covers_space():
     partition = _exact_555_partition()
 
     rng = np.random.default_rng(7)
-    X_uniform  = rng.uniform(-1, 1, (5000, 2))
+    X_uniform = rng.uniform(-1, 1, (5000, 2))
     X_boundary = sample_near_boundaries(partition, eps=1e-3)
     X = np.vstack([X_uniform, X_boundary])
 
     ok, counts = check_covers_space(partition, X)
     if not ok:
         uncovered = X[counts == 0]
-        overlap   = X[counts > 1]
+        overlap = X[counts > 1]
         raise AssertionError(
             f"Exact partition does not tile the space. "
             f"{len(uncovered)} uncovered (e.g. {uncovered[:3].tolist()}); "
@@ -203,8 +210,8 @@ def test_exact_555_finds_at_least_as_many_as_sparse():
     X = rng.uniform(-1, 1, (200, 2))
     x0 = X[0]
 
-    p_sparse = compute_partition(model, X,  method="sparse_julia")
-    p_exact  = compute_partition(model, x0, method="exact_julia")
+    p_sparse = compute_partition(model, X, method="sparse_julia")
+    p_exact = compute_partition(model, x0, method="exact_julia")
 
     assert len(p_exact) >= len(p_sparse), (
         f"exact found {len(p_exact)} regions, sparse found {len(p_sparse)}"

@@ -9,15 +9,15 @@ import plotly.graph_objects as go
 from parx.partition import Partition
 from parx.region import Region
 
-
 # ── Internal helpers ─────────────────────────────────────────────────────────
+
 
 def _activation_label(region: Region) -> str:
     """Return a compact, per-layer activation pattern string for hover labels."""
     parts = []
-    for l, q in enumerate(region.activation_path):
+    for layer_idx, q in enumerate(region.activation_path):
         bits = "".join(str(int(b)) for b in q)
-        parts.append(f"L{l + 1}: {bits}")
+        parts.append(f"L{layer_idx + 1}: {bits}")
     return "<br>".join(parts)
 
 
@@ -70,10 +70,12 @@ def _auto_range_2d(
 
     pts_arr = np.array(pts)
     xs, ys = pts_arr[:, 0], pts_arr[:, 1]
-    span   = max(float(xs.max() - xs.min()), float(ys.max() - ys.min()), 1.0)
+    span = max(float(xs.max() - xs.min()), float(ys.max() - ys.min()), 1.0)
     margin = pad * span
-    return (float(xs.min()) - margin, float(xs.max()) + margin), \
-           (float(ys.min()) - margin, float(ys.max()) + margin)
+    return (float(xs.min()) - margin, float(xs.max()) + margin), (
+        float(ys.min()) - margin,
+        float(ys.max()) + margin,
+    )
 
 
 def _region_vertices_2d(
@@ -89,7 +91,7 @@ def _region_vertices_2d(
     clipped polytope), sort counter-clockwise.  Produces crisp vector polygons
     with no sampling artefacts.
     """
-    box_D = np.array([[ 1., 0.], [-1., 0.], [ 0.,  1.], [ 0., -1.]])
+    box_D = np.array([[1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0]])
     box_g = np.array([x_range[1], -x_range[0], y_range[1], -y_range[0]])
     D_all = np.vstack([D, box_D])
     g_all = np.hstack([g, box_g])
@@ -130,6 +132,7 @@ def _region_vertices_2d(
 # as the ``color_by=`` callable to ``plot_partition_2d``.  Helpers derive a
 # scalar from the region's local affine map ``f(x) = A x + b``.
 
+
 def affine_frobenius(partition: Partition, region: Region) -> float:
     """Frobenius norm ``‖A‖_F`` of the region's local affine map."""
     A, _ = partition.local_affine(region)
@@ -158,6 +161,7 @@ def active_neuron_count(_partition: Partition, region: Region) -> float:
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
 
 def plot_partition_2d(
     partition: Partition,
@@ -231,7 +235,10 @@ def plot_partition_2d(
     if layer is not None:
         seen: dict[tuple[bytes, ...], Region] = {}
         for r in partition.regions:
-            key = tuple(r.activation_path[l].tobytes() for l in range(layer))
+            key = tuple(
+                r.activation_path[layer_idx].tobytes()
+                for layer_idx in range(layer)
+            )
             if key not in seen:
                 seen[key] = Region(
                     activation_path=r.activation_path[:layer],
@@ -257,14 +264,12 @@ def plot_partition_2d(
         colors = px.colors.sample_colorscale(
             "Turbo", [i / max(n - 1, 1) for i in range(n)]
         )
-        metrics  = None
-        scaled   = None
-        m_min    = m_max = None
+        metrics = None
+        scaled = None
+        m_min = m_max = None
         label_str = None
     else:
-        metrics = np.array(
-            [color_by(partition, r) for r in plot_regions], dtype=float
-        )
+        metrics = np.array([color_by(partition, r) for r in plot_regions], dtype=float)
         if log_color:
             scaled = np.log10(np.maximum(metrics, 1e-12))
         else:
@@ -274,7 +279,7 @@ def plot_partition_2d(
             normed = np.zeros_like(scaled)
         else:
             normed = (scaled - m_min) / (m_max - m_min)
-        colors    = px.colors.sample_colorscale(colorscale, normed)
+        colors = px.colors.sample_colorscale(colorscale, normed)
         label_str = color_label or getattr(color_by, "__name__", "metric")
 
     depth_str = f"layer {layer}" if layer is not None else "all layers"
@@ -296,7 +301,8 @@ def plot_partition_2d(
 
         fig.add_trace(
             go.Scatter(
-                x=xs, y=ys,
+                x=xs,
+                y=ys,
                 fill="toself",
                 fillcolor=colors[i],
                 line=dict(color="black", width=0.8),
@@ -315,7 +321,8 @@ def plot_partition_2d(
         cb_title = label_str + (" (log10)" if log_color else "")
         fig.add_trace(
             go.Scatter(
-                x=[None], y=[None],
+                x=[None],
+                y=[None],
                 mode="markers",
                 marker=dict(
                     color=[m_min, m_max],
@@ -356,14 +363,15 @@ def plot_region_counts(partition: Partition) -> go.Figure:
     counts = []
     for d in depths:
         prefixes = {
-            tuple(r.activation_path[l].tobytes() for l in range(d))
+            tuple(
+                r.activation_path[layer_idx].tobytes()
+                for layer_idx in range(d)
+            )
             for r in partition.regions
         }
         counts.append(len(prefixes))
 
-    fig = go.Figure(
-        go.Bar(x=depths, y=counts, marker_color="steelblue")
-    )
+    fig = go.Figure(go.Bar(x=depths, y=counts, marker_color="steelblue"))
     fig.update_layout(
         xaxis=dict(title="Layer depth", tickmode="linear", dtick=1),
         yaxis_title="Distinct regions",
@@ -415,7 +423,8 @@ def plot_halfspaces(
             if mask.any():
                 fig.add_trace(
                     go.Scatter(
-                        x=xs[mask], y=y_line[mask],
+                        x=xs[mask],
+                        y=y_line[mask],
                         mode="lines",
                         line=dict(color="rgba(80,80,80,0.45)", width=1),
                         showlegend=False,
@@ -426,7 +435,8 @@ def plot_halfspaces(
             if x_range[0] <= x_val <= x_range[1]:
                 fig.add_trace(
                     go.Scatter(
-                        x=[x_val, x_val], y=[y_range[0], y_range[1]],
+                        x=[x_val, x_val],
+                        y=[y_range[0], y_range[1]],
                         mode="lines",
                         line=dict(color="rgba(80,80,80,0.45)", width=1),
                         showlegend=False,
@@ -437,7 +447,8 @@ def plot_halfspaces(
     if x_range[0] <= c[0] <= x_range[1] and y_range[0] <= c[1] <= y_range[1]:
         fig.add_trace(
             go.Scatter(
-                x=[c[0]], y=[c[1]],
+                x=[c[0]],
+                y=[c[1]],
                 mode="markers",
                 marker=dict(size=10, color="crimson", symbol="x"),
                 name="centroid",

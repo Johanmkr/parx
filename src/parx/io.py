@@ -11,8 +11,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 
 def iter_state_dicts(source: Any) -> Iterator[tuple[Any, dict]]:
@@ -37,12 +38,10 @@ def iter_state_dicts(source: Any) -> Iterator[tuple[Any, dict]]:
     generator (e.g. via ``list(...)``) before doing anything else if you need
     the handles released sooner.
     """
-    if isinstance(source, (str, Path)):
+    if isinstance(source, str | Path):
         path = Path(source)
         if path.suffix.lower() not in (".h5", ".hdf5"):
-            raise ValueError(
-                f"Only .h5/.hdf5 paths are supported; got {path.suffix!r}"
-            )
+            raise ValueError(f"Only .h5/.hdf5 paths are supported; got {path.suffix!r}")
         yield from _iter_h5(path)
         return
 
@@ -60,8 +59,7 @@ def iter_state_dicts(source: Any) -> Iterator[tuple[Any, dict]]:
             sd = source[k]
             if not _looks_like_state_dict(sd):
                 raise TypeError(
-                    f"value at key {k!r} is not a state dict "
-                    f"(got {type(sd).__name__})"
+                    f"value at key {k!r} is not a state dict (got {type(sd).__name__})"
                 )
             yield k, sd
         return
@@ -75,13 +73,12 @@ def iter_state_dicts(source: Any) -> Iterator[tuple[Any, dict]]:
         ) from exc
     for i, sd in enumerate(items):
         if not _looks_like_state_dict(sd):
-            raise TypeError(
-                f"item {i} is not a state dict (got {type(sd).__name__})"
-            )
+            raise TypeError(f"item {i} is not a state dict (got {type(sd).__name__})")
         yield i, sd
 
 
 # ── Internals ─────────────────────────────────────────────────────────────────
+
 
 def _looks_like_state_dict(obj: Any) -> bool:
     """Heuristic: dict with str keys and at least one ``.weight`` entry."""
@@ -119,9 +116,5 @@ def _iter_h5(path: Path) -> Iterator[tuple[Any, dict]]:
                 sd = {k: np.asarray(grp[k]) for k in grp}
                 yield g_name, sd
         else:
-            sd = {
-                k: np.asarray(f[k])
-                for k in f
-                if isinstance(f[k], h5py.Dataset)
-            }
+            sd = {k: np.asarray(f[k]) for k in f if isinstance(f[k], h5py.Dataset)}
             yield None, sd

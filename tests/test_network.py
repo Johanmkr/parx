@@ -1,7 +1,6 @@
 """Tests for parx.network.load_network."""
+
 import numpy as np
-import pytest
-import torch
 import torch.nn as nn
 
 from parx.network import load_network

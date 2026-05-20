@@ -31,7 +31,13 @@ class Partition:
         return len(self.regions)
 
     def __repr__(self) -> str:
-        return f"Partition(n_regions={len(self)}, n_layers={self.n_layers}, input_dim={self.input_dim})"
+        return (
+            "Partition("
+            f"n_regions={len(self)}, "
+            f"n_layers={self.n_layers}, "
+            f"input_dim={self.input_dim}"
+            ")"
+        )
 
     # ── Geometry ──────────────────────────────────────────────────────────────
 
@@ -63,15 +69,15 @@ class Partition:
         if not q_path:
             return np.zeros((0, self.input_dim)), np.zeros(0)
 
-        A = np.eye(self.input_dim)   # accumulated linear map from input
+        A = np.eye(self.input_dim)  # accumulated linear map from input
         c = np.zeros(self.input_dim)  # accumulated bias from input
         D_blocks: list[np.ndarray] = []
         g_blocks: list[np.ndarray] = []
 
-        for l, q in enumerate(q_path):
-            W, b = self.weights[l], self.biases[l]
-            W_hat = W @ A            # effective weight:  (out_l, input_dim)
-            b_hat = W @ c + b        # effective bias:    (out_l,)
+        for layer_idx, q in enumerate(q_path):
+            W, b = self.weights[layer_idx], self.biases[layer_idx]
+            W_hat = W @ A  # effective weight:  (out_l, input_dim)
+            b_hat = W @ c + b  # effective bias:    (out_l,)
 
             # s[i] = -1 if neuron i is active (q=1), +1 if inactive (q=0)
             s = -2.0 * q + 1.0
@@ -79,8 +85,8 @@ class Partition:
             g_blocks.append(-(s * b_hat))
 
             # Propagate the affine map through active neurons only
-            A = q[:, None] * W_hat   # (out_l, input_dim)
-            c = q * b_hat            # (out_l,)
+            A = q[:, None] * W_hat  # (out_l, input_dim)
+            c = q * b_hat  # (out_l,)
 
         D = np.vstack(D_blocks)
         g = np.concatenate(g_blocks)
@@ -107,8 +113,8 @@ class Partition:
         """
         A = np.eye(self.input_dim)
         c = np.zeros(self.input_dim)
-        for l, q in enumerate(region.activation_path):
-            W, b = self.weights[l], self.biases[l]
+        for layer_idx, q in enumerate(region.activation_path):
+            W, b = self.weights[layer_idx], self.biases[layer_idx]
             W_hat = W @ A
             b_hat = W @ c + b
             A = q[:, None] * W_hat
@@ -133,8 +139,8 @@ class Partition:
         A = X
         q_per_layer: list[np.ndarray] = []
         for W, b in zip(self.weights, self.biases):
-            Z = A @ W.T + b          # (N, out_l)
-            Q = Z > 0                # (N, out_l), dtype bool
+            Z = A @ W.T + b  # (N, out_l)
+            Q = Z > 0  # (N, out_l), dtype bool
             q_per_layer.append(Q)
             A = Q * Z
 
@@ -146,15 +152,18 @@ class Partition:
 
         results: list[Region | None] = []
         for i in range(N):
-            key = tuple(q_per_layer[l][i].tobytes() for l in range(self.n_layers))
+            key = tuple(
+                q_per_layer[layer_idx][i].tobytes()
+                for layer_idx in range(self.n_layers)
+            )
             results.append(lookup.get(key))
         return results
 
     # ── Filtering ─────────────────────────────────────────────────────────────
 
-    def regions_at_layer(self, l: int) -> list[Region]:
-        """Return regions whose activation path has exactly l layers."""
-        return [r for r in self.regions if r.n_layers == l]
+    def regions_at_layer(self, layer: int) -> list[Region]:
+        """Return regions whose activation path has exactly ``layer`` layers."""
+        return [r for r in self.regions if r.n_layers == layer]
 
     # ── Construction from a method's RegionFindResult ─────────────────────────
 
@@ -164,20 +173,22 @@ class Partition:
         result,
         weights: list[np.ndarray],
         biases: list[np.ndarray],
-    ) -> "Partition":
+    ) -> Partition:
         """Build a Partition from a ``RegionFindResult`` (any registered method)."""
-        patterns  = np.asarray(result.patterns)
-        offsets   = np.asarray(result.offsets, dtype=np.int64)
+        patterns = np.asarray(result.patterns)
+        offsets = np.asarray(result.offsets, dtype=np.int64)
         centroids = np.asarray(result.centroids)
 
         n_regions = patterns.shape[0]
-        n_layers  = len(offsets) - 1
+        n_layers = len(offsets) - 1
 
         regions = [
             Region(
                 activation_path=[
-                    patterns[i, offsets[l] : offsets[l + 1]].astype(bool)
-                    for l in range(n_layers)
+                    patterns[i, offsets[layer_idx] : offsets[layer_idx + 1]].astype(
+                        bool
+                    )
+                    for layer_idx in range(n_layers)
                 ],
                 centroid=centroids[i],
             )

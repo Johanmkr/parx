@@ -9,7 +9,6 @@ at all).  These tests stay in pure Python — no Julia required.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from parx.partition import Partition
 from parx.region import Region
@@ -22,17 +21,17 @@ from parx.verify import (
     sample_near_boundaries,
 )
 
-
 # ── Fixtures: hand-built partitions ──────────────────────────────────────────
+
 
 def _quadrant_partition() -> Partition:
     """Healthy 4-quadrant partition (single identity layer, no bias)."""
     W = np.eye(2)
     b = np.zeros(2)
     regions = [
-        Region([np.array([True,  True])],  centroid=np.array([ 1.0,  1.0])),
-        Region([np.array([True,  False])], centroid=np.array([ 1.0, -1.0])),
-        Region([np.array([False, True])],  centroid=np.array([-1.0,  1.0])),
+        Region([np.array([True, True])], centroid=np.array([1.0, 1.0])),
+        Region([np.array([True, False])], centroid=np.array([1.0, -1.0])),
+        Region([np.array([False, True])], centroid=np.array([-1.0, 1.0])),
         Region([np.array([False, False])], centroid=np.array([-1.0, -1.0])),
     ]
     return Partition(regions=regions, weights=[W], biases=[b])
@@ -49,11 +48,12 @@ def _partition_with_empty_region() -> Partition:
     b = np.zeros(2)
     # q=[True, False] requires x_1 > 0 AND x_1 ≤ 0 → empty.
     bad = Region([np.array([True, False])], centroid=np.array([0.5, 0.0]))
-    ok  = Region([np.array([True, True])],  centroid=np.array([1.0, 0.0]))
+    ok = Region([np.array([True, True])], centroid=np.array([1.0, 0.0]))
     return Partition(regions=[ok, bad], weights=[W], biases=[b])
 
 
 # ── region_chebyshev_radii ───────────────────────────────────────────────────
+
 
 def test_radii_strictly_positive_for_healthy_partition():
     p = _quadrant_partition()
@@ -73,6 +73,7 @@ def test_empty_region_gets_zero_radius():
 
 # ── check_regions_nonempty ───────────────────────────────────────────────────
 
+
 def test_nonempty_passes_for_quadrants():
     p = _quadrant_partition()
     ok, bad, radii = check_regions_nonempty(p, min_radius=1e-6)
@@ -90,6 +91,7 @@ def test_nonempty_catches_degenerate_region():
 
 
 # ── check_routing_consistency ────────────────────────────────────────────────
+
 
 def test_routing_consistent_on_quadrants():
     p = _quadrant_partition()
@@ -114,6 +116,7 @@ def test_routing_flags_points_not_in_partition():
 
 
 # ── sample_near_boundaries ───────────────────────────────────────────────────
+
 
 def test_boundary_samples_are_in_their_region():
     """Every boundary sample is generated to sit just inside its source region."""
@@ -140,6 +143,7 @@ def test_boundary_samples_empty_when_partition_has_no_constraints():
 
 # ── Sample-based checks (existing functions) ─────────────────────────────────
 
+
 def test_overlap_detection_on_constructed_overlap():
     """Two identical regions should overlap on every sample point."""
     W = np.eye(2)
@@ -159,9 +163,9 @@ def test_coverage_gap_detection():
     W = np.eye(2)
     b = np.zeros(2)
     regions = [
-        Region([np.array([True,  True])],  centroid=np.array([ 1.0,  1.0])),
-        Region([np.array([True,  False])], centroid=np.array([ 1.0, -1.0])),
-        Region([np.array([False, True])],  centroid=np.array([-1.0,  1.0])),
+        Region([np.array([True, True])], centroid=np.array([1.0, 1.0])),
+        Region([np.array([True, False])], centroid=np.array([1.0, -1.0])),
+        Region([np.array([False, True])], centroid=np.array([-1.0, 1.0])),
         # Intentionally drop the [False, False] region.
     ]
     p = Partition(regions=regions, weights=[W], biases=[b])

@@ -1,6 +1,5 @@
 """Tests for the parx.methods registry and cross-method equivalence."""
 # juliacall must be imported before torch
-from parx._julia_init import ensure_julia
 
 import numpy as np
 import pytest
@@ -17,6 +16,7 @@ def _julia(julia_session):
 
 
 # ── Registry plumbing ─────────────────────────────────────────────────────────
+
 
 def test_list_methods_contains_builtins():
     names = list_methods()
@@ -41,6 +41,7 @@ def test_register_duplicate_raises():
 
 
 # ── Cross-method equivalence on a small MLP ──────────────────────────────────
+
 
 def _identity_2x2():
     model = nn.Sequential(nn.Linear(2, 2, bias=False), nn.ReLU(), nn.Linear(2, 1))
@@ -76,19 +77,22 @@ def test_exact_methods_agree_on_identity_network():
 def test_exact_methods_agree_on_random_mlp():
     torch.manual_seed(7)
     model = nn.Sequential(
-        nn.Linear(2, 4), nn.ReLU(),
-        nn.Linear(4, 4), nn.ReLU(),
+        nn.Linear(2, 4),
+        nn.ReLU(),
+        nn.Linear(4, 4),
+        nn.ReLU(),
         nn.Linear(4, 1),
     )
     x0 = np.zeros(2)
 
-    keys_j  = _region_keys(compute_partition(model, x0, method="exact_julia"))
+    keys_j = _region_keys(compute_partition(model, x0, method="exact_julia"))
     keys_jf = _region_keys(compute_partition(model, x0, method="exact_julia_fast"))
     keys_py = _region_keys(compute_partition(model, x0, method="exact_python"))
     assert keys_j == keys_jf == keys_py
 
 
 # ── state_dict input path ────────────────────────────────────────────────────
+
 
 def test_compute_partition_accepts_state_dict():
     """compute_partition takes a single state_dict (the canonical input)."""
@@ -101,15 +105,16 @@ def test_compute_partition_accepts_state_dict():
 
 # ── RegionFindResult shape contract ──────────────────────────────────────────
 
+
 def test_region_find_result_shapes():
     model = _identity_2x2()
     X = np.array([[1.0, 1.0], [-1.0, -1.0]])
     fn = get_method("sparse_python")
     weights = [model[0].weight.detach().numpy().astype(np.float64)]
-    biases  = [np.zeros(2, dtype=np.float64)]
+    biases = [np.zeros(2, dtype=np.float64)]
     res = fn(weights, biases, X)
 
     assert isinstance(res, RegionFindResult)
     assert res.patterns.ndim == 2
-    assert res.offsets.shape == (2,)            # n_layers + 1
+    assert res.offsets.shape == (2,)  # n_layers + 1
     assert res.centroids.shape == (res.patterns.shape[0], 2)

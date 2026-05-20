@@ -6,7 +6,7 @@ import numpy as np
 from scipy.optimize import linprog
 
 _ZERO_NORM_TOL = 1e-10
-_SLACK_TOL     = 1e-8
+_SLACK_TOL = 1e-8
 
 
 def chebyshev_center(
@@ -37,14 +37,14 @@ def chebyshev_center(
     if not valid.any():
         return np.zeros(n), float("inf")
 
-    D_v     = D[valid]
-    g_v     = g[valid]
+    D_v = D[valid]
+    g_v = g[valid]
     norms_v = row_norms[valid]
 
     # Variables = (x_1, …, x_n, r).  Constraint i: D_v[i] · x + ‖D_v[i]‖ · r ≤ g_v[i].
     A_ub = np.hstack([D_v, norms_v[:, None]])
     b_ub = g_v
-    c    = np.zeros(n + 1)
+    c = np.zeros(n + 1)
     c[-1] = -1.0  # maximise r ↔ minimise -r
     bounds = [(None, None)] * n + [(0.0, max_radius)]
 

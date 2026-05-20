@@ -19,8 +19,9 @@ List what is available:
 
 from __future__ import annotations
 
+import importlib
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 import numpy as np
 
@@ -33,8 +34,8 @@ class RegionFindResult:
     the activation pattern of layer ``l`` for region ``i``.
     """
 
-    patterns: np.ndarray   # (n_regions, total_bits)      int8
-    offsets: np.ndarray    # (n_layers + 1,)              int64
+    patterns: np.ndarray  # (n_regions, total_bits)      int8
+    offsets: np.ndarray  # (n_layers + 1,)              int64
     centroids: np.ndarray  # (n_regions, input_dim)       float64
 
 
@@ -57,9 +58,7 @@ def register_method(name: str) -> Callable[[MethodFn], MethodFn]:
 def get_method(name: str) -> MethodFn:
     """Look up a registered method by name."""
     if name not in _METHODS:
-        raise ValueError(
-            f"Unknown method {name!r}. Available: {list_methods()}"
-        )
+        raise ValueError(f"Unknown method {name!r}. Available: {list_methods()}")
     return _METHODS[name]
 
 
@@ -69,8 +68,11 @@ def list_methods() -> list[str]:
 
 
 # Self-register all bundled methods on import.
-from parx.methods import sparse_julia       # noqa: F401, E402
-from parx.methods import exact_julia        # noqa: F401, E402
-from parx.methods import exact_julia_fast   # noqa: F401, E402
-from parx.methods import sparse_python      # noqa: F401, E402
-from parx.methods import exact_python       # noqa: F401, E402
+for _module in (
+    "parx.methods.exact_julia",
+    "parx.methods.exact_julia_fast",
+    "parx.methods.exact_python",
+    "parx.methods.sparse_julia",
+    "parx.methods.sparse_python",
+):
+    importlib.import_module(_module)

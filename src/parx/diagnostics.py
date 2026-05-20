@@ -41,7 +41,8 @@ def benchmark_method(
 ) -> dict[str, Any]:
     """Time a region-finding method.
 
-    Returns ``{"method": ..., "n_regions": ..., "best_seconds": ..., "all_seconds": [...]}``.
+    Returns
+    ``{"method": ..., "n_regions": ..., "best_seconds": ..., "all_seconds": [...]}``.
 
     A warm-up run is performed and discarded to amortise JIT compilation.
     """

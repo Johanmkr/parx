@@ -22,7 +22,7 @@ def find(
     **_: object,
 ) -> RegionFindResult:
     arr = np.asarray(data, dtype=float)
-    x0  = arr[0] if arr.ndim == 2 else arr.ravel()
+    x0 = arr[0] if arr.ndim == 2 else arr.ravel()
 
     jl = ensure_julia()
     result = jl.LinearRegions.find_regions_exact_fast(weights, biases, x0)

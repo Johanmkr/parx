@@ -45,10 +45,12 @@ def precompile(*, verbose: bool = False) -> dict[str, float]:
     ensure_julia()  # cost (1) + (2)
 
     weights = {
-        "0.weight": np.eye(2), "0.bias": np.zeros(2),
-        "2.weight": np.eye(2), "2.bias": np.zeros(2),
+        "0.weight": np.eye(2),
+        "0.bias": np.zeros(2),
+        "2.weight": np.eye(2),
+        "2.bias": np.zeros(2),
     }
-    X  = np.array([[1.0, 1.0], [-1.0, -1.0]])
+    X = np.array([[1.0, 1.0], [-1.0, -1.0]])
     x0 = np.array([1.0, 1.0])
 
     timings: dict[str, float] = {}

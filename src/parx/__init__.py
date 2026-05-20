@@ -8,16 +8,18 @@ from __future__ import annotations
 
 import numpy as np
 
+from parx import (
+    methods,  # noqa: F401 — trigger method registration
+    viz,  # noqa: F401 — expose parx.viz
+)
 from parx._check import check_julia
 from parx._julia_init import ensure_julia  # noqa: F401
+from parx.io import iter_state_dicts
+from parx.methods import get_method, list_methods
 from parx.network import load_network
 from parx.partition import Partition
-from parx.region import Region
-from parx import viz  # noqa: F401 — expose parx.viz
-from parx import methods  # noqa: F401 — trigger method registration
-from parx.methods import get_method, list_methods
-from parx.io import iter_state_dicts
 from parx.precompile import precompile
+from parx.region import Region
 
 check_julia()
 

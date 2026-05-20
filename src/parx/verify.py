@@ -26,8 +26,8 @@ import numpy as np
 from parx._lp import chebyshev_center
 from parx.partition import Partition
 
-
 # ── Sample-based checks ──────────────────────────────────────────────────────
+
 
 def count_region_memberships(
     partition: Partition,
@@ -78,6 +78,7 @@ def check_covers_space(
 
 
 # ── LP-based checks ──────────────────────────────────────────────────────────
+
 
 def region_chebyshev_radii(
     partition: Partition,
@@ -157,6 +158,7 @@ def check_routing_consistency(
 
 
 # ── Targeted sampling helpers ────────────────────────────────────────────────
+
 
 def sample_near_boundaries(
     partition: Partition,

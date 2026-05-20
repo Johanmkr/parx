@@ -1,11 +1,12 @@
 """Smoke tests — Julia bridge, sparse region finder, and compute_partition."""
-# juliacall must be imported before torch to avoid a signal-handling conflict.
-from parx._julia_init import ensure_julia
 
+# juliacall must be imported before torch to avoid a signal-handling conflict.
 import numpy as np
 import pytest
 import torch
 import torch.nn as nn
+
+from parx._julia_init import ensure_julia
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -14,6 +15,7 @@ def _julia(julia_session):
 
 
 # ── Phase 1: bridge ───────────────────────────────────────────────────────────
+
 
 def test_julia_loads():
     jl = ensure_julia()
@@ -47,20 +49,21 @@ def test_network_info():
 
 # ── Phase 2: sparse region finder ────────────────────────────────────────────
 
+
 def test_sparse_regions_quadrants():
     """Identity 2→2 single-layer network must produce exactly 4 quadrant regions."""
     jl = ensure_julia()
     W = np.eye(2)
     b = np.zeros(2)
-    X = np.array([[1., 1.], [1., -1.], [-1., 1.], [-1., -1.]])
+    X = np.array([[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]])
 
     result = jl.LinearRegions.find_regions_sparse([W], [b], X)
-    patterns  = np.array(result[0])
-    offsets   = np.array(result[1])
+    patterns = np.array(result[0])
+    offsets = np.array(result[1])
     centroids = np.array(result[2])
 
-    assert patterns.shape  == (4, 2), "4 regions × 2 bits"
-    assert list(offsets)   == [0, 2], "1 layer → offsets [0, 2]"
+    assert patterns.shape == (4, 2), "4 regions × 2 bits"
+    assert list(offsets) == [0, 2], "1 layer → offsets [0, 2]"
     assert centroids.shape == (4, 2), "4 centroids in 2D"
 
     # All 4 activation patterns must be distinct
@@ -74,12 +77,18 @@ def test_sparse_regions_duplicate_points():
     W = np.eye(2)
     b = np.zeros(2)
     # 8 points but only 2 distinct regions
-    X = np.array([
-        [1., 1.], [2., 3.], [0.5, 0.1],   # all q=[1,1]
-        [-1., -1.], [-2., -3.], [-0.1, -0.5],  # all q=[0,0]
-        [1., 1.],   # duplicate
-        [-1., -1.],  # duplicate
-    ])
+    X = np.array(
+        [
+            [1.0, 1.0],
+            [2.0, 3.0],
+            [0.5, 0.1],  # all q=[1,1]
+            [-1.0, -1.0],
+            [-2.0, -3.0],
+            [-0.1, -0.5],  # all q=[0,0]
+            [1.0, 1.0],  # duplicate
+            [-1.0, -1.0],  # duplicate
+        ]
+    )
 
     result = jl.LinearRegions.find_regions_sparse([W], [b], X)
     patterns = np.array(result[0])
@@ -91,37 +100,38 @@ def test_sparse_regions_two_layers():
     jl = ensure_julia()
     W1 = np.eye(2)
     b1 = np.zeros(2)
-    W2 = np.array([[1., 1.], [-1., 1.]])
+    W2 = np.array([[1.0, 1.0], [-1.0, 1.0]])
     b2 = np.zeros(2)
-    X  = np.array([[1., 1.], [1., -1.], [-1., 1.], [-1., -1.]])
+    X = np.array([[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]])
 
-    result  = jl.LinearRegions.find_regions_sparse([W1, W2], [b1, b2], X)
+    result = jl.LinearRegions.find_regions_sparse([W1, W2], [b1, b2], X)
     patterns = np.array(result[0])
-    offsets  = np.array(result[1])
+    offsets = np.array(result[1])
 
     assert list(offsets) == [0, 2, 4], "2 layers × 2 neurons → [0, 2, 4]"
     assert patterns.shape[1] == 4, "4 total bits"
 
     # Layer 0 bits = patterns[:, 0:2], layer 1 bits = patterns[:, 2:4]
     for i in range(patterns.shape[0]):
-        l0 = patterns[i, offsets[0]:offsets[1]]
-        l1 = patterns[i, offsets[1]:offsets[2]]
+        l0 = patterns[i, offsets[0] : offsets[1]]
+        l1 = patterns[i, offsets[1] : offsets[2]]
         assert len(l0) == 2
         assert len(l1) == 2
 
 
 # ── Phase 3: exact region finder ─────────────────────────────────────────────
 
+
 def test_exact_regions_quadrants():
     """Exact mode on identity [2→2] must find all 4 quadrant regions."""
     jl = ensure_julia()
-    W  = np.eye(2)
-    b  = np.zeros(2)
+    W = np.eye(2)
+    b = np.zeros(2)
     x0 = np.array([1.0, 1.0])
 
-    result   = jl.LinearRegions.find_regions_exact([W], [b], x0)
+    result = jl.LinearRegions.find_regions_exact([W], [b], x0)
     patterns = np.array(result[0])
-    offsets  = np.array(result[1])
+    offsets = np.array(result[1])
 
     assert patterns.shape[0] == 4, "should find all 4 quadrant regions"
     assert list(offsets) == [0, 2]
@@ -132,19 +142,21 @@ def test_exact_regions_quadrants():
 def test_exact_finds_more_than_sparse():
     """Exact mode discovers regions not covered by the data; sparse does not."""
     jl = ensure_julia()
-    W  = np.eye(2)
-    b  = np.zeros(2)
+    W = np.eye(2)
+    b = np.zeros(2)
 
     # Sparse: only points in the positive quadrant → sees just 1 region.
     X_partial = np.array([[1.0, 1.0], [2.0, 0.5]])
-    n_sparse  = np.array(jl.LinearRegions.find_regions_sparse([W], [b], X_partial)[0]).shape[0]
+    n_sparse = np.array(
+        jl.LinearRegions.find_regions_sparse([W], [b], X_partial)[0]
+    ).shape[0]
 
     # Exact: starting from the same region, traverses all neighbours.
-    x0      = np.array([1.0, 1.0])
+    x0 = np.array([1.0, 1.0])
     n_exact = np.array(jl.LinearRegions.find_regions_exact([W], [b], x0)[0]).shape[0]
 
     assert n_sparse == 1
-    assert n_exact  == 4
+    assert n_exact == 4
 
 
 def test_exact_two_layers():
@@ -156,12 +168,13 @@ def test_exact_two_layers():
     b2 = np.zeros(2)
     x0 = np.array([1.0, 1.0])
 
-    result   = jl.LinearRegions.find_regions_exact([W1, W2], [b1, b2], x0)
+    result = jl.LinearRegions.find_regions_exact([W1, W2], [b1, b2], x0)
     patterns = np.array(result[0])
-    offsets  = np.array(result[1])
+    offsets = np.array(result[1])
 
     assert list(offsets) == [0, 2, 4]
-    # With identity weights, layer 2 activation is determined by layer 1, so still 4 regions.
+    # With identity weights, layer 2 activation is determined by layer 1,
+    # so still 4 regions.
     assert patterns.shape[0] == 4
 
 
@@ -173,20 +186,22 @@ def test_exact_centroids_satisfy_halfspaces():
     with torch.no_grad():
         model[0].weight.copy_(torch.eye(2))
 
-    x0        = np.array([1.0, 1.0])
+    x0 = np.array([1.0, 1.0])
     partition = compute_partition(model, x0, method="exact_julia")
 
     assert len(partition) == 4
     for region in partition.regions:
-        D, g  = partition.halfspaces(region)
+        D, g = partition.halfspaces(region)
         slack = g - D @ region.centroid
         assert np.all(slack >= -1e-8), "centroid must satisfy all halfspaces"
 
 
 # ── Phase 6: compute_partition ────────────────────────────────────────────────
 
+
 def _identity_exact_partition():
     from parx import compute_partition
+
     model = nn.Sequential(nn.Linear(2, 2, bias=False), nn.ReLU(), nn.Linear(2, 1))
     with torch.no_grad():
         model[0].weight.copy_(torch.eye(2))
@@ -206,19 +221,23 @@ def test_exact_regions_nonempty():
 
 
 def test_exact_no_overlaps():
-    """No two exact-mode regions share an interior point — also under boundary samples."""
+    """No two exact-mode regions share an interior point.
+
+    Includes samples close to boundaries.
+    """
     from parx.verify import check_no_overlaps, sample_near_boundaries
 
     partition = _identity_exact_partition()
 
     rng = np.random.default_rng(0)
-    X_uniform  = rng.uniform(-2, 2, (2000, 2))
+    X_uniform = rng.uniform(-2, 2, (2000, 2))
     X_boundary = sample_near_boundaries(partition, eps=1e-3)
     X = np.vstack([X_uniform, X_boundary])
 
     ok, counts = check_no_overlaps(partition, X)
     assert ok, (
-        f"Overlapping regions detected — max membership count: {counts.max()}, "
+        "Overlapping regions detected — "
+        f"max membership count: {counts.max()}, "
         f"{(counts > 1).sum()} of {len(X)} samples overlapped "
         f"({len(X_uniform)} uniform + {len(X_boundary)} boundary)"
     )
@@ -231,7 +250,7 @@ def test_exact_covers_space():
     partition = _identity_exact_partition()
 
     rng = np.random.default_rng(0)
-    X_uniform  = rng.uniform(-2, 2, (2000, 2))
+    X_uniform = rng.uniform(-2, 2, (2000, 2))
     X_boundary = sample_near_boundaries(partition, eps=1e-3)
     X = np.vstack([X_uniform, X_boundary])
 
@@ -269,12 +288,12 @@ def test_compute_partition_sparse():
     with torch.no_grad():
         model[0].weight.copy_(torch.eye(2))
 
-    X = np.array([[1., 1.], [1., -1.], [-1., 1.], [-1., -1.]])
+    X = np.array([[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]])
     partition = compute_partition(model, X, method="sparse_julia")
 
     assert len(partition) == 4
     assert partition.input_dim == 2
-    assert partition.n_layers  == 1   # output layer excluded
+    assert partition.n_layers == 1  # output layer excluded
 
     # Each point should route back to a known region
     routed = partition.route(X)
@@ -289,7 +308,7 @@ def test_compute_partition_halfspaces():
     with torch.no_grad():
         model[0].weight.copy_(torch.eye(2))
 
-    X = np.array([[1., 1.], [1., -1.], [-1., 1.], [-1., -1.]])
+    X = np.array([[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]])
     partition = compute_partition(model, X)
 
     for region in partition.regions:

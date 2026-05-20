@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 import torch
 import torch.nn as nn
@@ -17,6 +16,7 @@ def _mlp_state_dict(seed: int) -> dict:
 
 # ── Single state dict ────────────────────────────────────────────────────────
 
+
 def test_iter_single_state_dict():
     sd = _mlp_state_dict(0)
     items = list(iter_state_dicts(sd))
@@ -27,6 +27,7 @@ def test_iter_single_state_dict():
 
 
 # ── Mapping label → state_dict ───────────────────────────────────────────────
+
 
 def test_iter_dict_of_state_dicts_sorted_by_key():
     src = {2: _mlp_state_dict(2), 0: _mlp_state_dict(0), 1: _mlp_state_dict(1)}
@@ -50,6 +51,7 @@ def test_iter_dict_rejects_non_state_dict_value():
 
 # ── Sequence/set of state dicts ──────────────────────────────────────────────
 
+
 def test_iter_list_of_state_dicts():
     sds = [_mlp_state_dict(i) for i in range(3)]
     items = list(iter_state_dicts(sds))
@@ -65,6 +67,7 @@ def test_iter_tuple_of_state_dicts():
 
 
 # ── .h5 ──────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def grouped_h5(tmp_path):

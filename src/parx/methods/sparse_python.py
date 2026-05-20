@@ -24,22 +24,24 @@ def find(
     if X.ndim != 2:
         raise ValueError(f"data must be 2-D (N, input_dim); got shape {X.shape}")
 
-    n_layers    = len(weights)
+    n_layers = len(weights)
     layer_sizes = [w.shape[0] for w in weights]
-    total_bits  = sum(layer_sizes)
+    total_bits = sum(layer_sizes)
 
     offsets = np.zeros(n_layers + 1, dtype=np.int64)
-    for l in range(n_layers):
-        offsets[l + 1] = offsets[l] + layer_sizes[l]
+    for layer_idx in range(n_layers):
+        offsets[layer_idx + 1] = (
+            offsets[layer_idx] + layer_sizes[layer_idx]
+        )
 
     # Vectorised forward pass: build the concatenated bit pattern per point.
     N = X.shape[0]
     patterns_all = np.empty((N, total_bits), dtype=np.int8)
     A = X
-    for l, (W, b) in enumerate(zip(weights, biases)):
-        Z = A @ W.T + b                     # (N, layer_sizes[l])
+    for layer_idx, (W, b) in enumerate(zip(weights, biases)):
+        Z = A @ W.T + b  # (N, layer_sizes[layer_idx])
         Q = (Z > 0).astype(np.int8)
-        patterns_all[:, offsets[l] : offsets[l + 1]] = Q
+        patterns_all[:, offsets[layer_idx] : offsets[layer_idx + 1]] = Q
         A = Q * Z
 
     # Dedupe: hash via bytes to preserve first-seen order
