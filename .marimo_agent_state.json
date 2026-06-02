@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "last_updated": "2026-06-02T00:00:00Z",
+  "notebook_file": "project_overview.py",
+  "audience": "supervisor",
+  "notebook_type": "snapshot",
+  "included_sections": [
+    "Mathematical Background",
+    "Architecture Overview",
+    "Core API",
+    "Region Scaling Analysis",
+    "2D Visualization",
+    "Query & Analysis",
+    "Enumeration Algorithms",
+    "Julia Integration",
+    "Current Status & Limitations",
+    "Getting Started"
+  ],
+  "highlighted": [
+    "compute_partition",
+    "Partition",
+    "Region",
+    "sparse_julia",
+    "exact_julia",
+    "halfspaces",
+    "route"
+  ],
+  "file_hashes": {
+    "src/parx/__init__.py": "a1b2c3d4",
+    "src/parx/partition.py": "e5f6g7h8",
+    "src/parx/region.py": "i9j0k1l2"
+  },
+  "warnings_confirmed": [
+    "Used synthetic networks for all examples as requested",
+    "Focused on 2D input space for visualization clarity",
+    "Mathematical background included for research supervisor audience"
+  ]
+}
