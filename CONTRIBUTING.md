@@ -1,4 +1,4 @@
-# Contributing to polarx
+# Contributing to parx
 
 ## Prerequisites
 
@@ -13,8 +13,8 @@
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourname/polarx
-cd polarx
+git clone https://github.com/yourname/parx
+cd parx
 ```
 
 ### 2. Create a virtual environment and install dependencies
@@ -37,7 +37,7 @@ pip install -e ".[dev]"
 
 On first use, Julia needs to download and precompile its dependencies:
 ```bash
-julia --project=src/polarx/julia -e "using Pkg; Pkg.instantiate()"
+julia --project=src/parx/julia -e "using Pkg; Pkg.instantiate()"
 ```
 
 This only needs to be done once (or after changes to `julia/Project.toml`).
@@ -55,7 +55,7 @@ All tests should pass.
 ## Project Structure
 
 ```
-polarx/
+parx/
 ├── pyproject.toml              # build config, dependencies, tool config
 ├── README.md
 ├── CONTRIBUTING.md
@@ -68,7 +68,7 @@ polarx/
 │   ├── test_regions.py
 │   └── conftest.py
 └── src/
-    └── polarx/
+    └── parx/
         ├── __init__.py         # public API surface
         ├── _check.py           # startup checks (Julia on PATH, etc.)
         ├── _julia_init.py      # Julia runtime initialization
@@ -89,7 +89,7 @@ polarx/
 pytest                          # run all tests
 pytest tests/test_regions.py   # run a specific file
 pytest -x                      # stop on first failure
-pytest --cov=polarx             # with coverage
+pytest --cov=parx               # with coverage
 ```
 
 ### Linting and formatting
@@ -102,7 +102,7 @@ ruff format src/ tests/         # format
 
 You can test Julia code directly without going through Python:
 ```bash
-cd src/polarx/julia
+cd src/parx/julia
 julia --project=. -e "using LinearRegions; LinearRegions.run_tests()"
 ```
 
@@ -111,7 +111,7 @@ julia --project=. -e "using LinearRegions; LinearRegions.run_tests()"
 ## Adding Julia Dependencies
 
 ```bash
-cd src/polarx/julia
+cd src/parx/julia
 julia --project=.
 ```
 
