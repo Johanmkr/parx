@@ -84,10 +84,13 @@ def _dfs_exact(
     g_prev: np.ndarray,
     q_path: list[np.ndarray],
     x_parent: np.ndarray,
-    results: list[tuple[list[np.ndarray], np.ndarray]],
+    r_parent: float,
+    results: list[tuple[list[np.ndarray], np.ndarray, list[int], bool]],
 ) -> None:
     if layer >= len(weights):
-        results.append(([q.copy() for q in q_path], x_parent.copy()))
+        active = _active_local_indices(D_prev, g_prev, 0)
+        bounded = r_parent < 1e3
+        results.append(([q.copy() for q in q_path], x_parent.copy(), active, bounded))
         return
 
     W = weights[layer]
@@ -108,7 +111,7 @@ def _dfs_exact(
         D_full = np.vstack([D_prev, D_local])
         g_full = np.concatenate([g_prev, g_local])
 
-        x_int, _ = _chebyshev_center(D_full, g_full)
+        x_int, r = _chebyshev_center(D_full, g_full)
         if x_int is None:
             continue
 
@@ -125,6 +128,7 @@ def _dfs_exact(
             g_full,
             q_path + [q_curr.copy()],
             x_int,
+            r,
             results,
         )
 
@@ -160,7 +164,7 @@ def find(
     for layer_idx in range(n_layers):
         offsets[layer_idx + 1] = offsets[layer_idx] + layer_sizes[layer_idx]
 
-    results: list[tuple[list[np.ndarray], np.ndarray]] = []
+    results: list[tuple[list[np.ndarray], np.ndarray, list[int], bool]] = []
     _dfs_exact(
         weights=weights,
         biases=biases,
@@ -171,14 +175,33 @@ def find(
         g_prev=np.zeros(0),
         q_path=[],
         x_parent=x0.astype(np.float64),
+        r_parent=float("inf"),
         results=results,
     )
 
     n_regions = len(results)
     patterns = np.zeros((n_regions, total_bits), dtype=np.int8)
     centroids = np.zeros((n_regions, input_dim), dtype=np.float64)
-    for i, (path, centroid) in enumerate(results):
+    bounded_arr = np.zeros(n_regions, dtype=bool)
+
+    active_offsets = np.zeros(n_regions + 1, dtype=np.int64)
+    for i, (_, _, active, _) in enumerate(results):
+        active_offsets[i + 1] = active_offsets[i] + len(active)
+    total_active = int(active_offsets[-1])
+    active_indices_flat = np.zeros(total_active, dtype=np.int32)
+
+    for i, (path, centroid, active, bnd) in enumerate(results):
         patterns[i] = np.concatenate([q.astype(np.int8) for q in path])
         centroids[i] = centroid
+        bounded_arr[i] = bnd
+        start, stop = int(active_offsets[i]), int(active_offsets[i + 1])
+        active_indices_flat[start:stop] = active
 
-    return RegionFindResult(patterns=patterns, offsets=offsets, centroids=centroids)
+    return RegionFindResult(
+        patterns=patterns,
+        offsets=offsets,
+        centroids=centroids,
+        active_indices_flat=active_indices_flat,
+        active_offsets=active_offsets,
+        bounded=bounded_arr,
+    )

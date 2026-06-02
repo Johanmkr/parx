@@ -32,11 +32,18 @@ class RegionFindResult:
 
     ``patterns[i, offsets[l] : offsets[l + 1]]`` (Python-style, 0-indexed) is
     the activation pattern of layer ``l`` for region ``i``.
+
+    The optional active-index fields are populated by exact methods only.
+    Region ``i`` owns rows ``active_indices_flat[active_offsets[i] : active_offsets[i+1]]``
+    of the halfspace system — 0-based row indices into ``D`` from ``Partition.halfspaces()``.
     """
 
     patterns: np.ndarray  # (n_regions, total_bits)      int8
     offsets: np.ndarray  # (n_layers + 1,)              int64
     centroids: np.ndarray  # (n_regions, input_dim)       float64
+    active_indices_flat: np.ndarray | None = None  # (k,)             int32
+    active_offsets: np.ndarray | None = None  # (n_regions + 1,)  int64
+    bounded: np.ndarray | None = None  # (n_regions,)     bool
 
 
 MethodFn = Callable[..., RegionFindResult]

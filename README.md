@@ -14,8 +14,8 @@ A ReLU network is piecewise affine. parx computes the partition of input space i
 ## Current implementation status
 
 Implemented now:
-- Sparse enumeration: `compute_partition(..., mode="sparse")`
-- Exact enumeration: `compute_partition(..., mode="exact")`
+- Sparse enumeration: `compute_partition(..., method="sparse_julia")`
+- Exact enumeration: `compute_partition(..., method="exact_julia")`
 - Geometry reconstruction: `Partition.halfspaces(region)` returns `D, g` for `D x <= g`
 - Routing: `Partition.route(X)` maps points to known regions (or `None` for uncovered sparse regions)
 - Region filtering: `Partition.regions_at_layer(l)`
@@ -69,15 +69,14 @@ model = nn.Sequential(
 )
 
 X = np.random.uniform(-1.0, 1.0, size=(300, 2))
-partition = compute_partition(model, X, mode="sparse")
+partition = compute_partition(model, X, method="sparse_julia")
 
 print(f"regions: {len(partition)}")
 
-# Explicit plotting domain and layer-specific visualization
+# Visualize the partition (2D networks only)
 fig = plot_partition_2d(
     partition,
     domain=((-1.0, 1.0), (-1.0, 1.0)),
-    layer=1,
 )
 fig.show()
 ```

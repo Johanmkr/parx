@@ -13,12 +13,17 @@ function _dfs_exact!(
     g_prev   ::Vector{Float64},
     q_path   ::Vector{BitVector}, # activation patterns for layers 1 … layer-1
     x_parent ::Vector{Float64},   # interior point of parent region
-    results  ::Vector{Tuple{Vector{Int8}, Vector{Float64}}},
+    r_parent ::Float64,           # Chebyshev radius from the parent's LP
+    results  ::Vector{Tuple{Vector{Int8}, Vector{Float64}, Vector{Int32}, Bool}},
     make_model,
 )
     if layer > length(weights)
-        path_flat = reduce(vcat, [Int8.(q) for q in q_path])
-        push!(results, (path_flat, copy(x_parent)))
+        path_flat     = reduce(vcat, [Int8.(q) for q in q_path])
+        # Non-redundant rows of the complete halfspace system (0-based for Python).
+        active_1based = _active_local_indices(D_prev, g_prev, 0, make_model)
+        active_0based = isempty(active_1based) ? Int32[] : Int32.(active_1based .- 1)
+        bounded       = r_parent < 1e3
+        push!(results, (path_flat, copy(x_parent), active_0based, bounded))
         return
     end
 
@@ -41,7 +46,7 @@ function _dfs_exact!(
         g_full = vcat(g_prev, g_local)
 
         x_int, r = _chebyshev_center(D_full, g_full, make_model)
-        isnothing(x_int) && continue   # empty or degenerate region — skip
+        isnothing(x_int) && continue
 
         A_next = Float64.(q_curr) .* W_hat
         c_next = Float64.(q_curr) .* b_hat
@@ -52,7 +57,7 @@ function _dfs_exact!(
             A_next, c_next,
             D_full, g_full,
             [q_path; [q_curr]],
-            x_int,
+            x_int, r,
             results,
             make_model,
         )
@@ -85,7 +90,7 @@ function _find_regions_exact_impl(py_weights, py_biases, py_x0, make_model)
         offsets[l + 1] = offsets[l] + layer_sizes[l]
     end
 
-    results = Vector{Tuple{Vector{Int8}, Vector{Float64}}}()
+    results = Vector{Tuple{Vector{Int8}, Vector{Float64}, Vector{Int32}, Bool}}()
     _dfs_exact!(
         weights, biases,
         1,
@@ -94,7 +99,7 @@ function _find_regions_exact_impl(py_weights, py_biases, py_x0, make_model)
         Matrix{Float64}(undef, 0, input_dim),
         Float64[],
         BitVector[],
-        x0,
+        x0, Inf,
         results,
         make_model,
     )
@@ -102,18 +107,32 @@ function _find_regions_exact_impl(py_weights, py_biases, py_x0, make_model)
     n_regions = length(results)
     patterns  = Matrix{Int8}(undef,    n_regions, total_bits)
     centroids = Matrix{Float64}(undef, n_regions, input_dim)
+    bounded_arr = Vector{Bool}(undef, n_regions)
 
-    for (i, (path, centroid)) in enumerate(results)
+    # Build active_indices_flat and active_offsets.
+    active_offsets_arr    = Vector{Int64}(undef, n_regions + 1)
+    active_offsets_arr[1] = 0
+    for i in 1:n_regions
+        active_offsets_arr[i + 1] = active_offsets_arr[i] + length(results[i][3])
+    end
+    total_active        = Int(active_offsets_arr[end])
+    active_indices_flat = Vector{Int32}(undef, total_active)
+
+    for (i, (path, centroid, active_idxs, bnd)) in enumerate(results)
         patterns[i, :]  = path
         centroids[i, :] = centroid
+        bounded_arr[i]  = bnd
+        start = Int(active_offsets_arr[i]) + 1
+        stop  = Int(active_offsets_arr[i + 1])
+        active_indices_flat[start:stop] = active_idxs
     end
 
-    return (patterns, offsets, centroids)
+    return (patterns, offsets, centroids, active_indices_flat, active_offsets_arr, bounded_arr)
 end
 
 """
     find_regions_exact(py_weights, py_biases, py_x0)
-        -> (patterns, offsets, centroids)
+        -> (patterns, offsets, centroids, active_indices_flat, active_offsets, bounded)
 
 Exactly enumerate all feasible linear regions via DFS + facet-flipping.
 
@@ -121,14 +140,20 @@ Exactly enumerate all feasible linear regions via DFS + facet-flipping.
 begins from the region containing `x0` and traverses all reachable neighbours
 by flipping active halfspace constraints at each layer.
 
-Return format is identical to `find_regions_sparse`.
+Return format (first three fields are identical to `find_regions_sparse`):
+- `patterns`:             (n_regions, total_bits)   Int8
+- `offsets`:              (n_layers + 1,)            Int64
+- `centroids`:            (n_regions, input_dim)     Float64
+- `active_indices_flat`:  (k,)                       Int32  — 0-based row indices
+- `active_offsets`:       (n_regions + 1,)           Int64  — region i owns [i:i+1]
+- `bounded`:              (n_regions,)               Bool
 """
 find_regions_exact(py_weights, py_biases, py_x0) =
     _find_regions_exact_impl(py_weights, py_biases, py_x0, _make_model_standard)
 
 """
     find_regions_exact_fast(py_weights, py_biases, py_x0)
-        -> (patterns, offsets, centroids)
+        -> (patterns, offsets, centroids, active_indices_flat, active_offsets, bounded)
 
 Faster variant: identical algorithm to `find_regions_exact`, but constructs
 LPs with `direct_model(HiGHS.Optimizer())` instead of `Model(HiGHS.Optimizer)`,

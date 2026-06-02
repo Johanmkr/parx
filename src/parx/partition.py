@@ -182,16 +182,29 @@ class Partition:
         n_regions = patterns.shape[0]
         n_layers = len(offsets) - 1
 
-        regions = [
-            Region(
-                activation_path=[
-                    patterns[i, offsets[layer_idx] : offsets[layer_idx + 1]].astype(
-                        bool
-                    )
-                    for layer_idx in range(n_layers)
-                ],
-                centroid=centroids[i],
+        has_active = result.active_indices_flat is not None
+        has_bounded = result.bounded is not None
+
+        regions = []
+        for i in range(n_regions):
+            active_indices = None
+            if has_active:
+                a_start = int(result.active_offsets[i])
+                a_stop = int(result.active_offsets[i + 1])
+                active_indices = np.asarray(
+                    result.active_indices_flat[a_start:a_stop], dtype=np.int32
+                )
+            regions.append(
+                Region(
+                    activation_path=[
+                        patterns[i, offsets[layer_idx] : offsets[layer_idx + 1]].astype(
+                            bool
+                        )
+                        for layer_idx in range(n_layers)
+                    ],
+                    centroid=centroids[i],
+                    active_indices=active_indices,
+                    bounded=bool(result.bounded[i]) if has_bounded else False,
+                )
             )
-            for i in range(n_regions)
-        ]
         return cls(regions=regions, weights=weights, biases=biases)

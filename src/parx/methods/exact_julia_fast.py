@@ -30,4 +30,7 @@ def find(
         patterns=np.asarray(result[0], dtype=np.int8),
         offsets=np.asarray(result[1], dtype=np.int64),
         centroids=np.asarray(result[2], dtype=np.float64),
+        active_indices_flat=np.asarray(result[3], dtype=np.int32),
+        active_offsets=np.asarray(result[4], dtype=np.int64),
+        bounded=np.asarray(result[5], dtype=bool),
     )

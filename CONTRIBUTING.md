@@ -33,16 +33,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### 3. Instantiate the Julia environment
-
-On first use, Julia needs to download and precompile its dependencies:
-```bash
-julia --project=src/parx/julia -e "using Pkg; Pkg.instantiate()"
-```
-
-This only needs to be done once (or after changes to `julia/Project.toml`).
-
-### 4. Verify the setup
+### 3. Verify the setup
 
 ```bash
 pytest
@@ -64,20 +55,42 @@ parx/
 │   └── workflows/
 │       └── ci.yml              # GitHub Actions CI
 ├── tests/
+│   ├── conftest.py
+│   ├── test_julia_bridge.py
+│   ├── test_methods.py
 │   ├── test_network.py
-│   ├── test_regions.py
-│   └── conftest.py
+│   ├── test_partition.py
+│   ├── test_io.py
+│   ├── test_verify.py
+│   └── test_viz.py
 └── src/
     └── parx/
         ├── __init__.py         # public API surface
         ├── _check.py           # startup checks (Julia on PATH, etc.)
         ├── _julia_init.py      # Julia runtime initialization
+        ├── _lp.py              # Chebyshev center LP helper
         ├── network.py          # network loading (.pth, .h5)
-        ├── regions.py          # Python-facing partition API
+        ├── region.py           # Region dataclass
+        ├── partition.py        # Partition object + halfspaces/route/filter
+        ├── methods/            # region-finding backends
+        │   ├── __init__.py
+        │   ├── sparse_julia.py
+        │   ├── exact_julia.py
+        │   ├── exact_julia_fast.py
+        │   ├── sparse_python.py
+        │   └── exact_python.py
+        ├── io.py               # iter_state_dicts helper
+        ├── verify.py           # overlap/coverage checks
+        ├── viz.py              # Plotly visualizations
+        ├── juliapkg.json       # Julia runtime dependencies (for juliacall/juliapkg)
         └── julia/
-            ├── Project.toml    # Julia package environment
-            ├── Manifest.toml   # locked Julia dependencies
-            └── LinearRegions.jl
+            ├── LinearRegions.jl
+            ├── bridge.jl
+            ├── sparse.jl
+            ├── exact.jl
+            ├── lp.jl
+            ├── Project.toml    # standalone Julia environment (for direct Julia testing)
+            └── Manifest.toml   # locked deps for standalone environment
 ```
 
 ---
@@ -87,7 +100,7 @@ parx/
 ### Running tests
 ```bash
 pytest                          # run all tests
-pytest tests/test_regions.py   # run a specific file
+pytest tests/test_methods.py   # run a specific file
 pytest -x                      # stop on first failure
 pytest --cov=parx               # with coverage
 ```
@@ -110,18 +123,28 @@ julia --project=. -e "using LinearRegions; LinearRegions.run_tests()"
 
 ## Adding Julia Dependencies
 
+parx uses two separate Julia environments:
+
+- **Runtime environment** — managed by juliacall/juliapkg, stored in `.venv/julia_env`.
+  Declare new packages in `src/parx/juliapkg.json`.  juliacall resolves and installs them
+  automatically on the next `import parx`.  No manual `Pkg.add` needed.
+
+- **Standalone testing environment** — `src/parx/julia/Project.toml`.  Used only for
+  running Julia code directly (see "Testing the Julia code independently" above).
+  Add packages here with:
+
 ```bash
 cd src/parx/julia
 julia --project=.
 ```
-
-Then inside Julia:
 ```julia
 using Pkg
 Pkg.add("SomePackage")   # updates Project.toml and Manifest.toml
 ```
 
-Commit both `Project.toml` and `Manifest.toml`.
+Commit both `Project.toml` and `Manifest.toml` when changing the standalone environment.
+
+For packages needed at runtime, edit `src/parx/juliapkg.json` and commit that file.
 
 ---
 
@@ -130,7 +153,7 @@ Commit both `Project.toml` and `Manifest.toml`.
 | Variable | Default | Description |
 |---|---|---|
 | `JULIA_NUM_THREADS` | `"auto"` | Number of Julia threads |
-| `JULIA_PROJECT` | set automatically | Path to Julia project — do not set manually |
+| `PYTHON_JULIACALL_HANDLE_SIGNALS` | `"yes"` | Suppress harmless segfault at exit when Julia threads are active |
 
 ---
 
