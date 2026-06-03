@@ -143,8 +143,8 @@ def test_exact_julia_has_active_indices():
 def test_exact_julia_bounded_flag():
     """Exact methods must populate bounded flag for every region.
 
-    A region is bounded if its Chebyshev center has radius < 1e3.
-    For the identity 2x2 network, the all-active quadrant should be bounded.
+    The identity 2x2 network creates 4 quadrant regions in R^2; all four
+    quadrants extend to infinity so every region is unbounded.
     """
     model = _identity_2x2()
     x0 = np.array([1.0, 1.0])
@@ -157,35 +157,32 @@ def test_exact_julia_bounded_flag():
     assert result.bounded is not None, "exact method must populate bounded"
     assert result.bounded.dtype == bool, "bounded must be bool array"
     assert len(result.bounded) == result.patterns.shape[0], "one flag per region"
-    assert np.any(result.bounded), "at least one region should be bounded"
+    assert not np.any(result.bounded), "all quadrant regions are unbounded"
 
 
 def test_active_only_halfspaces():
-    """Partition.halfspaces(region, active_only=True) must return fewer rows.
+    """Partition.halfspaces(region, active_only=True) must index into full rows.
 
-    When active_indices are available, filtering to only active constraints
-    must strictly reduce the number of rows (unless all are active).
+    active_only=True must return exactly the rows of the full system indexed
+    by region.active_indices.  The identity 2x2 network has 2 constraints per
+    region (all active), so no row-count reduction is expected; we test the
+    indexing contract instead.
     """
     model = _identity_2x2()
     x0 = np.array([1.0, 1.0])
     partition = compute_partition(model, x0, method="exact_julia_fast")
 
-    # Check at least one region has redundant constraints
-    found_reduction = False
     for region in partition.regions:
         D_full, g_full = partition.halfspaces(region, active_only=False)
         D_active, g_active = partition.halfspaces(region, active_only=True)
 
-        if D_active.shape[0] < D_full.shape[0]:
-            found_reduction = True
-            assert D_active.shape[1] == D_full.shape[1], "width unchanged"
-            assert len(g_active) == D_active.shape[0], "g must match D rows"
-            assert np.allclose(D_active, D_full[region.active_indices]), \
-                "active rows must match indexed full rows"
-            assert np.allclose(g_active, g_full[region.active_indices]), \
-                "active g must match indexed full g"
-
-    assert found_reduction, "at least one region should have redundant constraints"
+        assert D_active.shape[1] == D_full.shape[1], "width unchanged"
+        assert len(g_active) == D_active.shape[0], "g rows match D rows"
+        assert D_active.shape[0] <= D_full.shape[0], "active ≤ full row count"
+        assert np.allclose(D_active, D_full[region.active_indices]), \
+            "active rows must match D_full[active_indices]"
+        assert np.allclose(g_active, g_full[region.active_indices]), \
+            "active g must match g_full[active_indices]"
 
 
 def test_exact_parity_bounded():
