@@ -118,3 +118,101 @@ def test_region_find_result_shapes():
     assert res.patterns.ndim == 2
     assert res.offsets.shape == (2,)  # n_layers + 1
     assert res.centroids.shape == (res.patterns.shape[0], 2)
+
+
+# ── Phase 8: exact metadata (active indices, bounded flag) ───────────────────
+
+
+def test_exact_julia_has_active_indices():
+    """Exact methods must populate active_indices for every region.
+
+    The active_indices identify non-redundant constraints in the halfspace
+    system for each region.
+    """
+    model = _identity_2x2()
+    x0 = np.array([1.0, 1.0])
+    partition = compute_partition(model, x0, method="exact_julia_fast")
+
+    assert len(partition) == 4, "identity network has 4 quadrant regions"
+    for region in partition.regions:
+        assert region.active_indices is not None, "exact method must set active_indices"
+        assert len(region.active_indices) > 0, "every region must have active idx"
+        assert region.active_indices.dtype == np.int32, "active_indices must be int32"
+
+
+def test_exact_julia_bounded_flag():
+    """Exact methods must populate bounded flag for every region.
+
+    A region is bounded if its Chebyshev center has radius < 1e3.
+    For the identity 2x2 network, the all-active quadrant should be bounded.
+    """
+    model = _identity_2x2()
+    x0 = np.array([1.0, 1.0])
+    result = get_method("exact_julia_fast")(
+        [model[0].weight.detach().numpy().astype(np.float64)],
+        [np.zeros(2, dtype=np.float64)],
+        x0,
+    )
+
+    assert result.bounded is not None, "exact method must populate bounded"
+    assert result.bounded.dtype == bool, "bounded must be bool array"
+    assert len(result.bounded) == result.patterns.shape[0], "one flag per region"
+    assert np.any(result.bounded), "at least one region should be bounded"
+
+
+def test_active_only_halfspaces():
+    """Partition.halfspaces(region, active_only=True) must return fewer rows.
+
+    When active_indices are available, filtering to only active constraints
+    must strictly reduce the number of rows (unless all are active).
+    """
+    model = _identity_2x2()
+    x0 = np.array([1.0, 1.0])
+    partition = compute_partition(model, x0, method="exact_julia_fast")
+
+    # Check at least one region has redundant constraints
+    found_reduction = False
+    for region in partition.regions:
+        D_full, g_full = partition.halfspaces(region, active_only=False)
+        D_active, g_active = partition.halfspaces(region, active_only=True)
+
+        if D_active.shape[0] < D_full.shape[0]:
+            found_reduction = True
+            assert D_active.shape[1] == D_full.shape[1], "width unchanged"
+            assert len(g_active) == D_active.shape[0], "g must match D rows"
+            assert np.allclose(D_active, D_full[region.active_indices]), \
+                "active rows must match indexed full rows"
+            assert np.allclose(g_active, g_full[region.active_indices]), \
+                "active g must match indexed full g"
+
+    assert found_reduction, "at least one region should have redundant constraints"
+
+
+def test_exact_parity_bounded():
+    """Bounded flag must agree between exact_python and exact_julia_fast.
+
+    Both methods use the same definition (Chebyshev radius < 1e3), so regions
+    with the same activation path should agree on boundedness.
+    """
+    model = _identity_2x2()
+    x0 = np.array([1.0, 1.0])
+
+    partition_py = compute_partition(model, x0, method="exact_python")
+    partition_jf = compute_partition(model, x0, method="exact_julia_fast")
+
+    bounded_py = {}
+    for region in partition_py.regions:
+        key = tuple(q.tobytes() for q in region.activation_path)
+        bounded_py[key] = region.bounded
+
+    bounded_jf = {}
+    for region in partition_jf.regions:
+        key = tuple(q.tobytes() for q in region.activation_path)
+        bounded_jf[key] = region.bounded
+
+    assert set(bounded_py.keys()) == set(bounded_jf.keys()), "same regions"
+    for key in bounded_py:
+        assert bounded_py[key] == bounded_jf[key], (
+            f"bounded mismatch for region {key}: "
+            f"exact_python={bounded_py[key]}, exact_julia_fast={bounded_jf[key]}"
+        )

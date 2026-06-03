@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from parx._lp import chebyshev_center
+from parx.analysis import (
+    region_chebyshev_radii,  # noqa: F401 — backward compat re-export
+)
 from parx.partition import Partition
 
 # ── Sample-based checks ──────────────────────────────────────────────────────
@@ -78,25 +80,6 @@ def check_covers_space(
 
 
 # ── LP-based checks ──────────────────────────────────────────────────────────
-
-
-def region_chebyshev_radii(
-    partition: Partition,
-    *,
-    max_radius: float = 1e3,
-) -> np.ndarray:
-    """Chebyshev (largest inscribed ball) radius for every region.
-
-    A radius of ``0.0`` means the region is empty or degenerate (a bug for
-    exact partitions).  A radius at or near ``max_radius`` indicates the
-    region is unbounded; the LP caps it for numerical sanity.
-    """
-    radii = np.zeros(len(partition), dtype=float)
-    for i, region in enumerate(partition.regions):
-        D, g = partition.halfspaces(region)
-        _, r = chebyshev_center(D, g, max_radius=max_radius)
-        radii[i] = r
-    return radii
 
 
 def check_regions_nonempty(

@@ -14,7 +14,15 @@ from parx import (
 )
 from parx._check import check_julia
 from parx._julia_init import ensure_julia  # noqa: F401
+from parx.analysis import (
+    always_active_neurons,
+    complexity_profile,
+    dead_neurons,
+    neuron_activity_rates,
+    region_size_summary,
+)
 from parx.io import iter_state_dicts
+from parx.io_partition import load_partition, save_partition
 from parx.methods import get_method, list_methods
 from parx.network import load_network
 from parx.partition import Partition
@@ -26,14 +34,21 @@ check_julia()
 __version__ = "0.1.0"
 __all__ = [
     "__version__",
+    "always_active_neurons",
+    "complexity_profile",
     "compute_partition",
+    "dead_neurons",
     "ensure_julia",
     "iter_state_dicts",
     "list_methods",
     "load_network",
+    "load_partition",
+    "neuron_activity_rates",
     "Partition",
     "precompile",
     "Region",
+    "region_size_summary",
+    "save_partition",
 ]
 
 
