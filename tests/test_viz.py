@@ -201,3 +201,140 @@ def test_plot_halfspaces_rejects_non_2d():
     )
     with pytest.raises(ValueError, match="input_dim=2"):
         plot_halfspaces(p, p.regions[0])
+
+
+# ── Higher-dimensional viz (slice, projection, PCA) ───────────────────────────
+
+
+@pytest.fixture(scope="module")
+def partition_3d():
+    """One-layer [3→2] network — 4 regions in R^3."""
+    W = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    b = np.zeros(2)
+    regions = [
+        Region([np.array([True, True])], centroid=np.array([1.0, 1.0, 0.0])),
+        Region([np.array([True, False])], centroid=np.array([1.0, -1.0, 0.0])),
+        Region([np.array([False, True])], centroid=np.array([-1.0, 1.0, 0.0])),
+        Region([np.array([False, False])], centroid=np.array([-1.0, -1.0, 0.0])),
+    ]
+    return Partition(regions=regions, weights=[W], biases=[b])
+
+
+def test_plot_partition_slice_returns_figure(partition_3d):
+    from parx.viz import plot_partition_slice
+
+    fig = plot_partition_slice(
+        partition_3d,
+        free_dims=(0, 1),
+        fixed_values={2: 0.0},
+        x_range=(-2.0, 2.0),
+        y_range=(-2.0, 2.0),
+    )
+    assert isinstance(fig, go.Figure)
+
+
+def test_plot_partition_slice_has_traces(partition_3d):
+    from parx.viz import plot_partition_slice
+
+    fig = plot_partition_slice(
+        partition_3d,
+        free_dims=(0, 1),
+        fixed_values={2: 0.0},
+        x_range=(-2.0, 2.0),
+        y_range=(-2.0, 2.0),
+    )
+    polys = [t for t in fig.data if t.mode == "lines" and t.fill == "toself"]
+    assert len(polys) >= 1
+
+
+def test_plot_partition_slice_color_by_none(partition_3d):
+    from parx.viz import plot_partition_slice
+
+    fig = plot_partition_slice(
+        partition_3d,
+        free_dims=(0, 1),
+        fixed_values={2: 0.0},
+        color_by=None,
+        x_range=(-2.0, 2.0),
+        y_range=(-2.0, 2.0),
+    )
+    assert isinstance(fig, go.Figure)
+    cbars = [t for t in fig.data if getattr(t.marker, "showscale", False)]
+    assert cbars == []
+
+
+def test_plot_partition_slice_auto_range(partition_3d):
+    """Omitting x_range/y_range should not raise."""
+    from parx.viz import plot_partition_slice
+
+    fig = plot_partition_slice(
+        partition_3d,
+        free_dims=(0, 1),
+        fixed_values={2: 0.0},
+    )
+    assert isinstance(fig, go.Figure)
+
+
+def test_plot_partition_projection_returns_figure(partition_3d):
+    from parx.viz import plot_partition_projection
+
+    proj = np.array([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]])  # (3, 2)
+    fig = plot_partition_projection(
+        partition_3d,
+        proj,
+        x_range=(-2.0, 2.0),
+        y_range=(-2.0, 2.0),
+    )
+    assert isinstance(fig, go.Figure)
+
+
+def test_plot_partition_projection_has_traces(partition_3d):
+    from parx.viz import plot_partition_projection
+
+    proj = np.array([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]])
+    fig = plot_partition_projection(
+        partition_3d,
+        proj,
+        x_range=(-2.0, 2.0),
+        y_range=(-2.0, 2.0),
+    )
+    polys = [t for t in fig.data if t.mode == "lines" and t.fill == "toself"]
+    assert len(polys) >= 1
+
+
+def test_plot_partition_projection_wrong_shape(partition_3d):
+    from parx.viz import plot_partition_projection
+
+    bad_proj = np.eye(2)  # (2, 2) — wrong for input_dim=3
+    with pytest.raises(ValueError, match="projection must have shape"):
+        plot_partition_projection(partition_3d, bad_proj)
+
+
+def test_plot_partition_pca_returns_figure(partition_3d):
+    pytest.importorskip("sklearn")
+    from parx.viz import plot_partition_pca
+
+    rng = np.random.default_rng(0)
+    data = rng.standard_normal((50, 3))
+    fig = plot_partition_pca(partition_3d, data)
+    assert isinstance(fig, go.Figure)
+
+
+def test_plot_partition_pca_missing_sklearn(partition_3d, monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _block_sklearn(name, *args, **kwargs):
+        if name == "sklearn.decomposition":
+            raise ImportError("sklearn not available")
+        return real_import(name, *args, **kwargs)
+
+    from parx.viz import plot_partition_pca
+
+    rng = np.random.default_rng(0)
+    data = rng.standard_normal((50, 3))
+
+    monkeypatch.setattr(builtins, "__import__", _block_sklearn)
+    with pytest.raises(ImportError, match="scikit-learn"):
+        plot_partition_pca(partition_3d, data)
