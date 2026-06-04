@@ -1,18 +1,14 @@
 """
-Example 3 — Per-epoch partitions over training
-==============================================
+Example 3 — Partition evolution over a full training run
+=========================================================
 
-Demonstrates the state-dict-per-epoch workflow:
+Trains a small network to convergence, capturing a state-dict snapshot at
+every epoch.  Computes the exact linear partition for each snapshot, then
+produces:
 
-  1. train a small net for a few epochs, capturing state dicts as we go
-  2. drive :func:`parx.iter_state_dicts` over the snapshots
-  3. compute one partition per epoch and watch the region count grow
-
-The same loop works unchanged if you pass:
-
-  * a ``dict[label, state_dict]``  (in-memory snapshots)
-  * a ``.h5`` file with one group per epoch
-  * a flat sequence of state dicts
+  * a static plot of the initial (random) and final (converged) partition
+  * an interactive Plotly animation with a play button and epoch slider
+  * an animated GIF (requires ``pip install 'parx[animate]'``)
 
 Run from the repo root:
     python examples/03_epochs.py
@@ -28,7 +24,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from parx import compute_partition, iter_state_dicts
+from parx import compute_partition
 from parx.viz import animate_epochs, animate_epochs_video, plot_partition_2d
 
 OUT = Path(__file__).parent / "output"
@@ -37,6 +33,8 @@ OUT.mkdir(exist_ok=True)
 torch.manual_seed(0)
 rng = np.random.default_rng(0)
 
+DOMAIN_RANGE = (-1.5, 1.5)
+
 
 def _save(fig, stem: str) -> None:
     html = OUT / f"{stem}.html"
@@ -44,102 +42,106 @@ def _save(fig, stem: str) -> None:
     print(f"  Saved: {html}")
 
 
-# ── Toy training loop on a circle-vs-square classification task ──────────────
+# ── Data: points inside / outside the unit circle ────────────────────────────
 def _make_data(n: int) -> tuple[torch.Tensor, torch.Tensor]:
-    x = rng.uniform(-1.5, 1.5, (n, 2)).astype(np.float32)
-    r = np.linalg.norm(x, axis=1)
-    y = (r < 1.0).astype(np.float32)
+    x = rng.uniform(DOMAIN_RANGE[0], DOMAIN_RANGE[1], (n, 2)).astype(np.float32)
+    y = (np.linalg.norm(x, axis=1) < 1.0).astype(np.float32)
     return torch.from_numpy(x), torch.from_numpy(y)
 
 
 X_train, y_train = _make_data(512)
-X_eval = rng.uniform(-1.5, 1.5, (200, 2))
 
 model = nn.Sequential(
-    nn.Linear(2, 6), nn.ReLU(),
-    nn.Linear(6, 6), nn.ReLU(),
-    nn.Linear(6, 1), nn.Sigmoid(),
+    nn.Linear(2, 8), nn.ReLU(),
+    nn.Linear(8, 8), nn.ReLU(),
+    nn.Linear(8, 1), nn.Sigmoid(),
 )
-opt    = torch.optim.Adam(model.parameters(), lr=0.05)
+opt    = torch.optim.Adam(model.parameters(), lr=0.03)
 loss_f = nn.BCELoss()
 
-# Capture snapshots every few epochs.  ``copy.deepcopy`` is required because
-# state_dict() returns views into the live model parameters.
-snapshots: dict[int, dict] = {0: copy.deepcopy(model.state_dict())}
-for epoch in range(1, 21):
-    opt.zero_grad()
-    pred = model(X_train).squeeze(-1)
-    loss = loss_f(pred, y_train)
-    loss.backward()
-    opt.step()
-    if epoch % 5 == 0:
-        snapshots[epoch] = copy.deepcopy(model.state_dict())
+# ── Training loop — snapshot every epoch ─────────────────────────────────────
+N_EPOCHS = 120
+snapshots: dict[int, dict] = {}
 
-print(f"Captured snapshots at epochs: {sorted(snapshots)}")
+print(f"Training for {N_EPOCHS} epochs …")
+print(f"{'Epoch':>6}  {'Loss':>8}")
+for epoch in range(N_EPOCHS + 1):
+    snapshots[epoch] = copy.deepcopy(model.state_dict())
+    if epoch % 10 == 0:
+        with torch.no_grad():
+            loss_val = loss_f(model(X_train).squeeze(-1), y_train).item()
+        print(f"{epoch:>6}  {loss_val:>8.4f}")
+    if epoch < N_EPOCHS:
+        opt.zero_grad()
+        loss_f(model(X_train).squeeze(-1), y_train).backward()
+        opt.step()
 
+print(f"\nCaptured {len(snapshots)} snapshots (epochs 0 – {N_EPOCHS})")
 
-# ── Compute one partition per snapshot ───────────────────────────────────────
-print("\nEpoch | sparse regions | exact regions")
-print("------+----------------+--------------")
-for epoch, sd in iter_state_dicts(snapshots):
-    p_sparse = compute_partition(sd, X_eval, method="sparse_julia")
-    p_exact  = compute_partition(sd, np.zeros(2), method="exact_julia_fast")
-    print(f"{epoch:>5} | {len(p_sparse):>14} | {len(p_exact):>13}")
-
-
-# ── Compute exact partitions for all snapshots ───────────────────────────────
-DOMAIN = ((-1.5, 1.5), (-1.5, 1.5))
-
-print("\nComputing exact partitions for all snapshots …")
+# ── Compute exact partition for every epoch ───────────────────────────────────
+# exact_julia_fast uses DFS + facet-flipping seeded from the origin; fast for
+# small 2-D networks (typically < 0.5 s per partition).
+print(f"\nComputing exact partitions for all {len(snapshots)} epochs …")
 epoch_keys = sorted(snapshots)
 partitions = []
 for epoch in epoch_keys:
     p = compute_partition(snapshots[epoch], np.zeros(2), method="exact_julia_fast")
     partitions.append(p)
-    print(f"  epoch {epoch:>2}: {len(p)} regions")
+    if epoch % 20 == 0:
+        print(f"  epoch {epoch:>3}: {len(p):>3} regions")
+
+print(f"  … done.  Region counts range "
+      f"{min(len(p) for p in partitions)} – {max(len(p) for p in partitions)}")
 
 epoch_labels = [str(e) for e in epoch_keys]
 
-# ── Static plots for first and last snapshot ─────────────────────────────────
-fig_first = plot_partition_2d(partitions[0], domain=DOMAIN)
-fig_first.update_layout(title=f"Epoch {epoch_keys[0]}: {len(partitions[0])} regions  (‖A‖_F)")
-_save(fig_first, f"03_partition_epoch{epoch_keys[0]:02d}")
+# ── Static comparison: epoch 0 vs final ──────────────────────────────────────
+print("\nSaving static plots …")
+for idx, label in [(0, "initial"), (-1, "final")]:
+    fig = plot_partition_2d(
+        partitions[idx],
+        x_range=DOMAIN_RANGE,
+        y_range=DOMAIN_RANGE,
+        colorscale="Plasma",
+    )
+    epoch_num = epoch_keys[idx]
+    fig.update_layout(
+        title=f"Epoch {epoch_num} ({label}): {len(partitions[idx])} regions  (‖A‖_F)"
+    )
+    _save(fig, f"03_partition_{label}")
 
-fig_last = plot_partition_2d(partitions[-1], domain=DOMAIN)
-fig_last.update_layout(title=f"Epoch {epoch_keys[-1]}: {len(partitions[-1])} regions  (‖A‖_F)")
-_save(fig_last, f"03_partition_epoch{epoch_keys[-1]:02d}")
-
-# ── Interactive Plotly animation (play/pause + epoch slider) ─────────────────
+# ── Interactive Plotly animation (play/pause + epoch slider) ──────────────────
 # animate_epochs returns a go.Figure with one frame per epoch.
-# All frames share the same spatial range and colour scale so changes across
-# training are visually comparable.  Call .show() to open in a browser, or
-# write_html() to save a self-contained interactive file.
+# All frames share a fixed spatial range and colour scale so that the growth
+# of regions during training is visually comparable across time.
+# The returned figure can be shown in a notebook with .show(), saved as a
+# self-contained interactive HTML, or embedded in a dashboard.
 print("\nBuilding interactive Plotly animation …")
 fig_anim = animate_epochs(
     partitions,
     epoch_labels=epoch_labels,
-    x_range=(-1.5, 1.5),   # fix view to the training domain
-    y_range=(-1.5, 1.5),
+    x_range=DOMAIN_RANGE,
+    y_range=DOMAIN_RANGE,
     colorscale="Plasma",
-    frame_duration=700,     # ms per frame during auto-play
+    frame_duration=120,     # ms per frame — fast enough to see convergence
 )
 fig_anim.show()
 _save(fig_anim, "03_animation")
 
 # ── GIF export via matplotlib ─────────────────────────────────────────────────
-# animate_epochs_video writes a .gif (Pillow) or .mp4 (ffmpeg) depending on
-# the suffix.  Requires: pip install 'parx[animate]'
+# animate_epochs_video writes a .gif (Pillow writer) or .mp4 (ffmpeg writer)
+# depending on the file suffix.  Requires: pip install 'parx[animate]'
 try:
     gif_path = OUT / "03_animation.gif"
-    print("Building GIF (matplotlib FuncAnimation) …")
+    print("Building GIF …")
     animate_epochs_video(
         partitions,
         gif_path,
         epoch_labels=epoch_labels,
-        x_range=(-1.5, 1.5),
-        y_range=(-1.5, 1.5),
+        x_range=DOMAIN_RANGE,
+        y_range=DOMAIN_RANGE,
         colorscale="Plasma",
-        fps=2,
+        fps=12,             # smooth enough to follow convergence
         dpi=120,
     )
     print(f"  Saved: {gif_path}")
