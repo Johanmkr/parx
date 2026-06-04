@@ -12,6 +12,7 @@ from parx import (
     methods,  # noqa: F401 — trigger method registration
     viz,  # noqa: F401 — expose parx.viz
 )
+from parx.viz import animate_epochs, animate_epochs_video
 from parx._check import check_julia
 from parx._julia_init import ensure_julia  # noqa: F401
 from parx.analysis import (
@@ -35,6 +36,8 @@ __version__ = "0.1.0"
 __all__ = [
     "__version__",
     "always_active_neurons",
+    "animate_epochs",
+    "animate_epochs_video",
     "complexity_profile",
     "compute_partition",
     "dead_neurons",

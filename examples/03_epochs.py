@@ -29,7 +29,7 @@ import torch
 import torch.nn as nn
 
 from parx import compute_partition, iter_state_dicts
-from parx.viz import plot_partition_2d
+from parx.viz import animate_epochs, animate_epochs_video, plot_partition_2d
 
 OUT = Path(__file__).parent / "output"
 OUT.mkdir(exist_ok=True)
@@ -87,20 +87,63 @@ for epoch, sd in iter_state_dicts(snapshots):
     print(f"{epoch:>5} | {len(p_sparse):>14} | {len(p_exact):>13}")
 
 
-# ── Visualise the partition at the first vs last snapshot ────────────────────
-first_epoch = min(snapshots)
-last_epoch  = max(snapshots)
-
+# ── Compute exact partitions for all snapshots ───────────────────────────────
 DOMAIN = ((-1.5, 1.5), (-1.5, 1.5))
-p_first = compute_partition(snapshots[first_epoch], np.zeros(2), method="exact_julia_fast")
-p_last  = compute_partition(snapshots[last_epoch],  np.zeros(2), method="exact_julia_fast")
 
-fig_first = plot_partition_2d(p_first, domain=DOMAIN)
-fig_first.update_layout(title=f"Epoch {first_epoch}: {len(p_first)} regions  (‖A‖_F)")
-_save(fig_first, f"03_partition_epoch{first_epoch:02d}")
+print("\nComputing exact partitions for all snapshots …")
+epoch_keys = sorted(snapshots)
+partitions = []
+for epoch in epoch_keys:
+    p = compute_partition(snapshots[epoch], np.zeros(2), method="exact_julia_fast")
+    partitions.append(p)
+    print(f"  epoch {epoch:>2}: {len(p)} regions")
 
-fig_last  = plot_partition_2d(p_last, domain=DOMAIN)
-fig_last.update_layout(title=f"Epoch {last_epoch}: {len(p_last)} regions  (‖A‖_F)")
-_save(fig_last, f"03_partition_epoch{last_epoch:02d}")
+epoch_labels = [str(e) for e in epoch_keys]
+
+# ── Static plots for first and last snapshot ─────────────────────────────────
+fig_first = plot_partition_2d(partitions[0], domain=DOMAIN)
+fig_first.update_layout(title=f"Epoch {epoch_keys[0]}: {len(partitions[0])} regions  (‖A‖_F)")
+_save(fig_first, f"03_partition_epoch{epoch_keys[0]:02d}")
+
+fig_last = plot_partition_2d(partitions[-1], domain=DOMAIN)
+fig_last.update_layout(title=f"Epoch {epoch_keys[-1]}: {len(partitions[-1])} regions  (‖A‖_F)")
+_save(fig_last, f"03_partition_epoch{epoch_keys[-1]:02d}")
+
+# ── Interactive Plotly animation (play/pause + epoch slider) ─────────────────
+# animate_epochs returns a go.Figure with one frame per epoch.
+# All frames share the same spatial range and colour scale so changes across
+# training are visually comparable.  Call .show() to open in a browser, or
+# write_html() to save a self-contained interactive file.
+print("\nBuilding interactive Plotly animation …")
+fig_anim = animate_epochs(
+    partitions,
+    epoch_labels=epoch_labels,
+    x_range=(-1.5, 1.5),   # fix view to the training domain
+    y_range=(-1.5, 1.5),
+    colorscale="Plasma",
+    frame_duration=700,     # ms per frame during auto-play
+)
+fig_anim.show()
+_save(fig_anim, "03_animation")
+
+# ── GIF export via matplotlib ─────────────────────────────────────────────────
+# animate_epochs_video writes a .gif (Pillow) or .mp4 (ffmpeg) depending on
+# the suffix.  Requires: pip install 'parx[animate]'
+try:
+    gif_path = OUT / "03_animation.gif"
+    print("Building GIF (matplotlib FuncAnimation) …")
+    animate_epochs_video(
+        partitions,
+        gif_path,
+        epoch_labels=epoch_labels,
+        x_range=(-1.5, 1.5),
+        y_range=(-1.5, 1.5),
+        colorscale="Plasma",
+        fps=2,
+        dpi=120,
+    )
+    print(f"  Saved: {gif_path}")
+except ImportError as e:
+    print(f"  GIF skipped — {e}")
 
 print("\nDone.")

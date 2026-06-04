@@ -538,6 +538,30 @@ def _build_colored_figure(
     return fig
 
 
+def _global_range(
+    partitions: list,
+    pad: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    systems = [
+        partition.halfspaces(r)
+        for partition in partitions
+        for r in partition.regions
+    ]
+    return _auto_range_2d_from_systems(systems, pad)
+
+
+def _global_metric_range(
+    partitions: list,
+    color_by,
+    log_color: bool,
+) -> tuple[float, float]:
+    vals = np.array(
+        [color_by(p, r) for p in partitions for r in p.regions], dtype=float
+    )
+    scaled = np.log10(np.maximum(vals, 1e-12)) if log_color else vals
+    return float(scaled.min()), float(scaled.max())
+
+
 def plot_partition_slice(
     partition: Partition,
     free_dims: tuple[int, int],
@@ -874,3 +898,411 @@ def plot_halfspaces(
         title=f"Halfspaces for region  ({D.shape[0]} constraints)",
     )
     return fig
+
+
+def animate_epochs(
+    partitions: list[Partition],
+    *,
+    epoch_labels: list[str] | None = None,
+    x_range: tuple[float, float] | None = None,
+    y_range: tuple[float, float] | None = None,
+    pad: float = 0.3,
+    color_by=affine_frobenius,
+    color_label: str | None = None,
+    log_color: bool = False,
+    colorscale: str = "Viridis",
+    frame_duration: int = 500,
+) -> go.Figure:
+    """Plotly figure with one frame per epoch, a play/pause button, and a slider.
+
+    All frames share a fixed color scale and spatial range so that changes
+    across epochs are visually comparable.  Each partition in ``partitions``
+    corresponds to one epoch (frame); the list index is used as the epoch label
+    unless ``epoch_labels`` is provided.
+
+    Parameters
+    ----------
+    partitions : list[Partition]
+        One Partition per epoch, all must have ``input_dim == 2``.
+    epoch_labels : list[str] or None
+        Labels shown in the slider.  Defaults to ``["0", "1", …]``.
+    x_range, y_range : (float, float) or None
+        Axis extents shared across all frames.  Auto-computed when ``None``.
+    pad : float
+        Fractional padding for auto-computed range.
+    color_by : callable or None
+        ``(partition, region) -> float`` metric.  Pass ``None`` for a discrete
+        Turbo palette (color range not shared across epochs in that case).
+    color_label : str or None
+        Colourbar title.
+    log_color : bool
+        Map metric via ``log10`` before colouring.
+    colorscale : str
+        Any Plotly colorscale name.
+    frame_duration : int
+        Milliseconds each frame is shown during playback.
+
+    Returns
+    -------
+    go.Figure
+    """
+    if not partitions:
+        return go.Figure()
+    if any(p.input_dim != 2 for p in partitions):
+        raise ValueError("animate_epochs requires all partitions to have input_dim == 2")
+
+    labels = epoch_labels or [str(i) for i in range(len(partitions))]
+    if len(labels) != len(partitions):
+        raise ValueError("epoch_labels length must match number of partitions")
+
+    if x_range is None or y_range is None:
+        auto_x, auto_y = _global_range(partitions, pad)
+        x_range = x_range or auto_x
+        y_range = y_range or auto_y
+
+    if color_by is not None:
+        m_min, m_max = _global_metric_range(partitions, color_by, log_color)
+        label_str = color_label or getattr(color_by, "__name__", "metric")
+        cb_title = label_str + (" (log10)" if log_color else "")
+    else:
+        m_min = m_max = None
+        label_str = None
+        cb_title = None
+
+    # Pre-compute per-epoch polygon data
+    epoch_traces: list[list[go.Scatter]] = []
+    for partition in partitions:
+        traces: list[go.Scatter] = []
+        regions = partition.regions
+        if color_by is not None:
+            raw = np.array([color_by(partition, r) for r in regions], dtype=float)
+            scaled = np.log10(np.maximum(raw, 1e-12)) if log_color else raw
+            if m_max - m_min < 1e-12:
+                normed = np.zeros_like(scaled)
+            else:
+                normed = (scaled - m_min) / (m_max - m_min)
+            colors = px.colors.sample_colorscale(colorscale, normed)
+        else:
+            n = len(regions)
+            colors = px.colors.sample_colorscale(
+                "Turbo", [i / max(n - 1, 1) for i in range(n)]
+            )
+
+        for i, region in enumerate(regions):
+            D, g = partition.halfspaces(region)
+            verts = _region_vertices_2d(D, g, x_range, y_range)
+            if verts is None:
+                xs_poly: list = []
+                ys_poly: list = []
+            else:
+                xs_poly = list(np.append(verts[:, 0], verts[0, 0]))
+                ys_poly = list(np.append(verts[:, 1], verts[0, 1]))
+
+            hover_lines = []
+            if color_by is not None:
+                hover_lines.append(f"{label_str}: {raw[i]:.4g}")
+            hover_lines.append(_activation_label(region))
+            hover_text = "<br>".join(hover_lines)
+
+            traces.append(
+                go.Scatter(
+                    x=xs_poly,
+                    y=ys_poly,
+                    fill="toself",
+                    fillcolor=colors[i],
+                    line=dict(color="black", width=0.8),
+                    mode="lines",
+                    opacity=0.75,
+                    showlegend=False,
+                    hovertemplate=f"{hover_text}<extra></extra>",
+                )
+            )
+        epoch_traces.append(traces)
+
+    n_max = max(len(t) for t in epoch_traces)
+    # Colorbar trace index is always n_max
+    _empty = go.Scatter(
+        x=[],
+        y=[],
+        fill="toself",
+        fillcolor="rgba(0,0,0,0)",
+        line=dict(color="rgba(0,0,0,0)", width=0),
+        mode="lines",
+        showlegend=False,
+        hoverinfo="skip",
+    )
+
+    def _pad_traces(traces: list[go.Scatter]) -> list[go.Scatter]:
+        padded = list(traces)
+        while len(padded) < n_max:
+            padded.append(_empty)
+        return padded
+
+    colorbar_trace = go.Scatter(
+        x=[None],
+        y=[None],
+        mode="markers",
+        marker=dict(
+            color=[m_min, m_max] if m_min is not None else [0, 1],
+            colorscale=colorscale,
+            cmin=m_min,
+            cmax=m_max,
+            showscale=(m_min is not None),
+            opacity=0,
+            colorbar=dict(title=cb_title or "", thickness=14),
+        ),
+        hoverinfo="skip",
+        showlegend=False,
+    )
+
+    # Initial figure data (first epoch)
+    initial_traces = _pad_traces(epoch_traces[0]) + [colorbar_trace]
+    fig = go.Figure(data=initial_traces)
+
+    # Build frames
+    frames = []
+    for label, traces in zip(labels, epoch_traces):
+        frame_data = _pad_traces(traces) + [colorbar_trace]
+        frames.append(
+            go.Frame(
+                data=frame_data,
+                name=label,
+                traces=list(range(n_max + 1)),
+            )
+        )
+    fig.frames = frames
+
+    # Slider steps
+    slider_steps = [
+        dict(
+            args=[
+                [label],
+                dict(
+                    frame=dict(duration=frame_duration, redraw=True),
+                    mode="immediate",
+                    transition=dict(duration=0),
+                ),
+            ],
+            label=label,
+            method="animate",
+        )
+        for label in labels
+    ]
+
+    fig.update_layout(
+        xaxis=dict(range=list(x_range), title="x₁", constrain="domain"),
+        yaxis=dict(range=list(y_range), title="x₂", scaleanchor="x"),
+        title=f"Partition evolution  ({len(partitions)} epochs)",
+        width=640 if m_min is not None else 520,
+        height=540,
+        updatemenus=[
+            dict(
+                type="buttons",
+                showactive=False,
+                y=1.08,
+                x=0.0,
+                xanchor="left",
+                buttons=[
+                    dict(
+                        label="▶ Play",
+                        method="animate",
+                        args=[
+                            None,
+                            dict(
+                                frame=dict(duration=frame_duration, redraw=True),
+                                fromcurrent=True,
+                                transition=dict(duration=0),
+                            ),
+                        ],
+                    ),
+                    dict(
+                        label="⏸ Pause",
+                        method="animate",
+                        args=[
+                            [None],
+                            dict(
+                                frame=dict(duration=0, redraw=False),
+                                mode="immediate",
+                                transition=dict(duration=0),
+                            ),
+                        ],
+                    ),
+                ],
+            )
+        ],
+        sliders=[
+            dict(
+                active=0,
+                currentvalue=dict(prefix="Epoch: ", visible=True, xanchor="center"),
+                pad=dict(t=60),
+                steps=slider_steps,
+            )
+        ],
+    )
+    return fig
+
+
+def animate_epochs_video(
+    partitions: list[Partition],
+    path,
+    *,
+    epoch_labels: list[str] | None = None,
+    x_range: tuple[float, float] | None = None,
+    y_range: tuple[float, float] | None = None,
+    pad: float = 0.3,
+    color_by=affine_frobenius,
+    color_label: str | None = None,
+    log_color: bool = False,
+    colorscale: str = "Viridis",
+    fps: int = 4,
+    dpi: int = 150,
+    figsize: tuple[float, float] = (6.0, 5.0),
+) -> None:
+    """Write an animated ``.gif`` or ``.mp4`` of the partition across epochs.
+
+    Format is inferred from the ``path`` suffix (``.gif`` → Pillow writer,
+    ``.mp4`` → ffmpeg writer).
+
+    Parameters
+    ----------
+    partitions : list[Partition]
+        One Partition per epoch, all must have ``input_dim == 2``.
+    path : str or os.PathLike
+        Output file.  Suffix determines format: ``.gif`` or ``.mp4``.
+    epoch_labels : list[str] or None
+        Title suffix per frame.  Defaults to ``["0", "1", …]``.
+    x_range, y_range : (float, float) or None
+        Axis extents shared across all frames.  Auto-computed when ``None``.
+    pad : float
+        Fractional padding for auto-computed range.
+    color_by : callable or None
+        ``(partition, region) -> float`` metric.
+    color_label : str or None
+        Colorbar label.
+    log_color : bool
+        Map metric via ``log10``.
+    colorscale : str
+        Plotly colorscale name; lowercased to resolve a matplotlib colormap
+        (``"Viridis"`` → ``"viridis"`` etc.).
+    fps : int
+        Frames per second.
+    dpi : int
+        Output resolution in dots per inch.
+    figsize : (float, float)
+        Matplotlib figure size in inches.
+
+    Raises
+    ------
+    ImportError
+        If ``matplotlib`` is not installed.
+    """
+    try:
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        import matplotlib.colorbar as mcolorbar
+        import matplotlib as _mpl
+        import matplotlib.cm as mcm
+        import matplotlib.colors as mcolors
+        from matplotlib.animation import FuncAnimation
+    except ImportError as e:
+        raise ImportError(
+            "animate_epochs_video requires matplotlib: pip install 'parx[animate]'"
+        ) from e
+
+    if not partitions:
+        return
+    if any(p.input_dim != 2 for p in partitions):
+        raise ValueError(
+            "animate_epochs_video requires all partitions to have input_dim == 2"
+        )
+
+    import os
+    path = os.fspath(path)
+    labels = epoch_labels or [str(i) for i in range(len(partitions))]
+    if len(labels) != len(partitions):
+        raise ValueError("epoch_labels length must match number of partitions")
+
+    if x_range is None or y_range is None:
+        auto_x, auto_y = _global_range(partitions, pad)
+        x_range = x_range or auto_x
+        y_range = y_range or auto_y
+
+    mpl_cmap = _mpl.colormaps[colorscale.lower()]
+
+    if color_by is not None:
+        m_min, m_max = _global_metric_range(partitions, color_by, log_color)
+        norm = mcolors.Normalize(vmin=m_min, vmax=m_max)
+        label_str = color_label or getattr(color_by, "__name__", "metric")
+    else:
+        m_min = m_max = None
+        norm = None
+        label_str = None
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.set_xlim(x_range)
+    ax.set_ylim(y_range)
+    ax.set_aspect("equal")
+    ax.set_xlabel("x₁")
+    ax.set_ylabel("x₂")
+
+    if norm is not None:
+        sm = mcm.ScalarMappable(cmap=mpl_cmap, norm=norm)
+        sm.set_array([])
+        cb_label = label_str + (" (log10)" if log_color else "")
+        fig.colorbar(sm, ax=ax, label=cb_label, fraction=0.046, pad=0.04)
+
+    def _draw_frame(frame_idx: int):
+        for patch in list(ax.patches):
+            patch.remove()
+        partition = partitions[frame_idx]
+        ax.set_title(f"Epoch {labels[frame_idx]}  ({len(partition)} regions)")
+
+        if color_by is not None:
+            raw = np.array(
+                [color_by(partition, r) for r in partition.regions], dtype=float
+            )
+            scaled = np.log10(np.maximum(raw, 1e-12)) if log_color else raw
+        else:
+            raw = scaled = None
+
+        for i, region in enumerate(partition.regions):
+            D, g = partition.halfspaces(region)
+            verts = _region_vertices_2d(D, g, x_range, y_range)
+            if verts is None:
+                continue
+
+            if norm is not None and scaled is not None:
+                color = mpl_cmap(norm(scaled[i]))
+            else:
+                n = len(partition.regions)
+                color = mpl_cmap(i / max(n - 1, 1))
+
+            patch = mpatches.Polygon(
+                verts,
+                closed=True,
+                facecolor=color,
+                edgecolor="black",
+                linewidth=0.6,
+                alpha=0.75,
+            )
+            ax.add_patch(patch)
+
+    _draw_frame(0)
+
+    anim = FuncAnimation(
+        fig,
+        _draw_frame,
+        frames=len(partitions),
+        interval=1000 // fps,
+        blit=False,
+    )
+
+    suffix = os.path.splitext(path)[-1].lower()
+    if suffix == ".gif":
+        anim.save(path, writer="pillow", fps=fps, dpi=dpi)
+    elif suffix == ".mp4":
+        anim.save(path, writer="ffmpeg", fps=fps, dpi=dpi)
+    else:
+        anim.save(path, fps=fps, dpi=dpi)
+
+    plt.close(fig)

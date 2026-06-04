@@ -10,6 +10,7 @@ import torch.nn as nn
 from parx import compute_partition
 from parx.partition import Partition
 from parx.region import Region
+from parx.viz import animate_epochs, animate_epochs_video
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -338,3 +339,66 @@ def test_plot_partition_pca_missing_sklearn(partition_3d, monkeypatch):
     monkeypatch.setattr(builtins, "__import__", _block_sklearn)
     with pytest.raises(ImportError, match="scikit-learn"):
         plot_partition_pca(partition_3d, data)
+
+
+# ── Animation tests ───────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def epoch_partitions(simple_partition):
+    return [simple_partition, simple_partition, simple_partition]
+
+
+class TestAnimateEpochs:
+    def test_returns_figure(self, epoch_partitions):
+        fig = animate_epochs(epoch_partitions)
+        assert isinstance(fig, go.Figure)
+
+    def test_frame_count(self, epoch_partitions):
+        fig = animate_epochs(epoch_partitions)
+        assert len(fig.frames) == 3
+
+    def test_custom_labels(self, epoch_partitions):
+        fig = animate_epochs(epoch_partitions, epoch_labels=["a", "b", "c"])
+        assert fig.frames[1].name == "b"
+
+    def test_wrong_label_count(self, epoch_partitions):
+        with pytest.raises(ValueError, match="epoch_labels length"):
+            animate_epochs(epoch_partitions, epoch_labels=["only_one"])
+
+    def test_wrong_input_dim(self, partition_3d):
+        with pytest.raises(ValueError, match="input_dim"):
+            animate_epochs([partition_3d])
+
+    def test_empty_list(self):
+        fig = animate_epochs([])
+        assert isinstance(fig, go.Figure)
+
+    def test_has_slider(self, epoch_partitions):
+        fig = animate_epochs(epoch_partitions)
+        assert len(fig.layout.sliders) == 1
+
+    def test_has_play_button(self, epoch_partitions):
+        fig = animate_epochs(epoch_partitions)
+        assert len(fig.layout.updatemenus) == 1
+
+
+class TestAnimateEpochsVideo:
+    def test_gif_output(self, tmp_path, epoch_partitions):
+        mpl = pytest.importorskip("matplotlib")  # noqa: F841
+        out = tmp_path / "out.gif"
+        animate_epochs_video(epoch_partitions, out, fps=2, dpi=72)
+        assert out.exists()
+        assert out.stat().st_size > 0
+
+    def test_wrong_input_dim(self, tmp_path, partition_3d):
+        pytest.importorskip("matplotlib")
+        out = tmp_path / "bad.gif"
+        with pytest.raises(ValueError, match="input_dim"):
+            animate_epochs_video([partition_3d], out)
+
+    def test_wrong_label_count(self, tmp_path, epoch_partitions):
+        pytest.importorskip("matplotlib")
+        out = tmp_path / "bad.gif"
+        with pytest.raises(ValueError, match="epoch_labels length"):
+            animate_epochs_video(epoch_partitions, out, epoch_labels=["x"])
