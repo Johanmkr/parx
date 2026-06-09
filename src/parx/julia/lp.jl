@@ -62,12 +62,15 @@ function _active_local_indices(
     n_full  = size(D_full, 1)
     n_local = n_full - n_prev
     n_vars  = size(D_full, 2)
-    active  = Int32[]
+    active_flags = Vector{Bool}(undef, n_local)
 
-    for i in 1:n_local
+    Threads.@threads for i in 1:n_local
         full_i = n_prev + i
         # Zero-norm rows are degenerate (fixed-value neuron) — not a real facet.
-        norm(@view D_full[full_i, :]) < 1e-10 && continue
+        if norm(@view D_full[full_i, :]) < 1e-10
+            active_flags[i] = false
+            continue
+        end
         model = make_model()
         set_silent(model)
         @variable(model, x[1:n_vars])
@@ -79,12 +82,10 @@ function _active_local_indices(
         optimize!(model)
 
         st = termination_status(model)
-        if st == MOI.DUAL_INFEASIBLE    # unbounded ↔ constraint is active
-            push!(active, Int32(i))
-        elseif (st == MOI.OPTIMAL || st == MOI.ALMOST_OPTIMAL) &&
-               objective_value(model) > g_full[full_i] - 1e-8
-            push!(active, Int32(i))
-        end
+        active_flags[i] = (st == MOI.DUAL_INFEASIBLE) ||
+            ((st == MOI.OPTIMAL || st == MOI.ALMOST_OPTIMAL) &&
+             objective_value(model) > g_full[full_i] - 1e-8)
     end
-    return active
+
+    return Int32.(findall(active_flags))
 end

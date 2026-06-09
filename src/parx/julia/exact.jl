@@ -31,45 +31,59 @@ function _dfs_exact!(
     W_hat = W * A_prev        # (n_out, input_dim)
     b_hat = W * c_prev + b    # (n_out,)
 
-    q_start = BitVector(W_hat * x_parent + b_hat .> 0)
-    queue   = [q_start]
-    visited = Set{BitVector}([q_start])
+    q_start  = BitVector(W_hat * x_parent + b_hat .> 0)
+    frontier = [q_start]
+    visited  = Set{BitVector}([q_start])
 
-    while !isempty(queue)
-        q_curr = popfirst!(queue)
+    while !isempty(frontier)
+        # Snapshot the frontier and process each item as an independent task.
+        # Each task owns its local results and candidate neighbours.
+        tasks = map(frontier) do q_curr
+            Threads.@spawn begin
+                s       = -2.0 .* Float64.(q_curr) .+ 1.0  # −1 if active, +1 if inactive
+                D_local = s .* W_hat
+                g_local = -(s .* b_hat)
+                D_full  = vcat(D_prev, D_local)
+                g_full  = vcat(g_prev, g_local)
 
-        s       = -2.0 .* Float64.(q_curr) .+ 1.0  # −1 if active, +1 if inactive
-        D_local = s .* W_hat
-        g_local = -(s .* b_hat)
+                x_int, r = _chebyshev_center(D_full, g_full, make_model)
+                isnothing(x_int) && return (nothing, BitVector[])
 
-        D_full = vcat(D_prev, D_local)
-        g_full = vcat(g_prev, g_local)
+                local_results = Vector{Tuple{Vector{Int8}, Vector{Float64}, Vector{Int32}, Bool}}()
+                _dfs_exact!(
+                    weights, biases,
+                    layer + 1,
+                    Float64.(q_curr) .* W_hat,
+                    Float64.(q_curr) .* b_hat,
+                    D_full, g_full,
+                    [q_path; [q_curr]],
+                    x_int, r,
+                    local_results,
+                    make_model,
+                )
 
-        x_int, r = _chebyshev_center(D_full, g_full, make_model)
-        isnothing(x_int) && continue
+                # Facet-flipping: collect candidate neighbours for this item.
+                active = _active_local_indices(D_full, g_full, size(D_prev, 1), make_model)
+                neighbors = [let q_n = copy(q_curr); q_n[i] = !q_n[i]; q_n end
+                             for i in active]
+                return (local_results, neighbors)
+            end
+        end
 
-        A_next = Float64.(q_curr) .* W_hat
-        c_next = Float64.(q_curr) .* b_hat
+        # Merge results and build next frontier (deduplication is sequential).
+        next_candidates = BitVector[]
+        for t in tasks
+            local_results, neighbors = fetch(t)
+            isnothing(local_results) && continue
+            append!(results, local_results)
+            append!(next_candidates, neighbors)
+        end
 
-        _dfs_exact!(
-            weights, biases,
-            layer + 1,
-            A_next, c_next,
-            D_full, g_full,
-            [q_path; [q_curr]],
-            x_int, r,
-            results,
-            make_model,
-        )
-
-        # Facet-flipping: flip each non-redundant local constraint to reach neighbours.
-        active = _active_local_indices(D_full, g_full, size(D_prev, 1), make_model)
-        for i in active
-            q_n = copy(q_curr)
-            q_n[i] = !q_n[i]
+        frontier = BitVector[]
+        for q_n in next_candidates
             if q_n ∉ visited
                 push!(visited, q_n)
-                push!(queue, q_n)
+                push!(frontier, q_n)
             end
         end
     end
