@@ -1306,3 +1306,148 @@ def animate_epochs_video(
         anim.save(path, fps=fps, dpi=dpi)
 
     plt.close(fig)
+
+
+# ── Feature embedding ──────────────────────────────────────────────────────────
+
+
+def _compute_embedding(features: np.ndarray, method: str, **kwargs) -> np.ndarray:
+    """Reduce ``features`` (N, D) to (N, 2) via t-SNE or UMAP."""
+    if method == "tsne":
+        try:
+            from sklearn.manifold import TSNE
+        except ImportError as e:
+            raise ImportError(
+                "plot_feature_embedding requires scikit-learn: pip install scikit-learn"
+            ) from e
+        return TSNE(n_components=2, **kwargs).fit_transform(features)
+    elif method == "umap":
+        try:
+            import umap
+        except ImportError:
+            raise ImportError("umap requires umap-learn: pip install 'parx[embed]'")
+        return umap.UMAP(n_components=2, **kwargs).fit_transform(features)
+    else:
+        raise ValueError(
+            f"unknown embedding method {method!r}; choose 'tsne' or 'umap'"
+        )
+
+
+def plot_feature_embedding(
+    features: np.ndarray,
+    partition: Partition,
+    X: np.ndarray,
+    *,
+    method: str = "tsne",
+    color_by="region",
+    title: str | None = None,
+    **embed_kwargs,
+) -> go.Figure:
+    """Scatter the 2D embedding of penultimate-layer features, coloured by region.
+
+    Parameters
+    ----------
+    features : np.ndarray, shape (N, D)
+        Pre-extracted penultimate-layer activations.
+    partition : Partition
+        Used to route ``X`` to linear regions via ``partition.route(X)``.
+    X : np.ndarray, shape (N, input_dim)
+        Original input points corresponding to each row of ``features``.
+    method : 'tsne' or 'umap'
+        Dimensionality reduction method forwarded to :func:`_compute_embedding`.
+    color_by : 'region' or np.ndarray shape (N,)
+        ``'region'`` colours discretely by region index (Turbo palette); an
+        array colours continuously by scalar value (Viridis + colorbar).
+    title : str or None
+        Figure title; defaults to embedding method and region count.
+    **embed_kwargs
+        Forwarded to :func:`_compute_embedding`.
+    """
+    emb = _compute_embedding(np.asarray(features, dtype=float), method, **embed_kwargs)
+
+    routed = partition.route(X)
+    region_map = {
+        tuple(q.tobytes() for q in r.activation_path): i
+        for i, r in enumerate(partition.regions)
+    }
+    region_ids = np.array(
+        [
+            region_map.get(tuple(q.tobytes() for q in r.activation_path), -1)
+            if r is not None
+            else -1
+            for r in routed
+        ],
+        dtype=int,
+    )
+
+    fig = go.Figure()
+
+    if isinstance(color_by, str) and color_by == "region":
+        n_regions = len(partition.regions)
+        routed_mask = region_ids >= 0
+        unrouted_mask = ~routed_mask
+
+        routed_indices = np.where(routed_mask)[0]
+        color_list = px.colors.sample_colorscale(
+            "Turbo",
+            [region_ids[i] / max(n_regions - 1, 1) for i in routed_indices],
+        )
+        hover_strings = [
+            f"Region {rid}<br>{_activation_label(r)}" if r is not None else "outside"
+            for rid, r in zip(region_ids, routed)
+        ]
+
+        if routed_mask.any():
+            fig.add_trace(
+                go.Scattergl(
+                    x=emb[routed_mask, 0],
+                    y=emb[routed_mask, 1],
+                    mode="markers",
+                    marker=dict(color=color_list, size=4, opacity=0.7),
+                    text=[hover_strings[i] for i in routed_indices],
+                    hovertemplate="%{text}<extra></extra>",
+                    showlegend=False,
+                    name="routed",
+                )
+            )
+
+        if unrouted_mask.any():
+            fig.add_trace(
+                go.Scattergl(
+                    x=emb[unrouted_mask, 0],
+                    y=emb[unrouted_mask, 1],
+                    mode="markers",
+                    marker=dict(color="lightgrey", size=5, symbol="x", opacity=0.7),
+                    text=["outside known regions"] * int(unrouted_mask.sum()),
+                    hovertemplate="%{text}<extra></extra>",
+                    showlegend=False,
+                    name="unrouted",
+                )
+            )
+    else:
+        color_vals = np.asarray(color_by, dtype=float)
+        fig.add_trace(
+            go.Scattergl(
+                x=emb[:, 0],
+                y=emb[:, 1],
+                mode="markers",
+                marker=dict(
+                    color=color_vals,
+                    colorscale="Viridis",
+                    showscale=True,
+                    size=4,
+                    opacity=0.7,
+                ),
+                showlegend=False,
+            )
+        )
+
+    fig.update_layout(
+        xaxis_title=f"{method.upper()} 1",
+        yaxis_title=f"{method.upper()} 2",
+        title=title
+        or f"Feature embedding ({method.upper()}, {len(partition)} regions)",
+        width=600,
+        height=520,
+    )
+    return fig

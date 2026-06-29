@@ -45,6 +45,46 @@ def load_network(
     return weights, biases
 
 
+def extract_features(
+    model,
+    X: np.ndarray,
+    *,
+    layer_index: int = -1,
+) -> np.ndarray:
+    """Run a forward pass and return the input activations to a chosen Linear layer.
+
+    ``layer_index`` uses Python list indexing over all ``nn.Linear`` submodules
+    (-1 = last, 0 = first).  Returns shape ``(N, feature_dim)`` float64 array.
+    """
+    try:
+        import torch
+        import torch.nn as nn
+    except ImportError as exc:
+        raise ImportError("torch is required: pip install torch") from exc
+
+    linears = [m for m in model.modules() if isinstance(m, nn.Linear)]
+    if not linears:
+        raise ValueError("model has no nn.Linear layers")
+
+    target = linears[layer_index]  # natural IndexError if out of range
+
+    captured: list = []
+
+    def _hook(module, inputs, output):
+        captured.append(inputs[0])
+
+    handle = target.register_forward_hook(_hook)
+    try:
+        model.eval()
+        with torch.no_grad():
+            tensor = torch.tensor(X, dtype=torch.float32)
+            model(tensor)
+    finally:
+        handle.remove()
+
+    return captured[0].detach().cpu().numpy().astype(np.float64)
+
+
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
 

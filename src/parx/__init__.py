@@ -12,7 +12,6 @@ from parx import (
     methods,  # noqa: F401 — trigger method registration
     viz,  # noqa: F401 — expose parx.viz
 )
-from parx.viz import animate_epochs, animate_epochs_video
 from parx._check import check_julia
 from parx._julia_init import ensure_julia  # noqa: F401
 from parx.analysis import (
@@ -25,10 +24,11 @@ from parx.analysis import (
 from parx.io import iter_state_dicts
 from parx.io_partition import load_partition, save_partition
 from parx.methods import get_method, list_methods
-from parx.network import load_network
+from parx.network import extract_features, load_network
 from parx.partition import Partition
 from parx.precompile import precompile
 from parx.region import Region
+from parx.viz import animate_epochs, animate_epochs_video, plot_feature_embedding
 
 check_julia()
 
@@ -42,12 +42,14 @@ __all__ = [
     "compute_partition",
     "dead_neurons",
     "ensure_julia",
+    "extract_features",
     "iter_state_dicts",
     "list_methods",
     "load_network",
     "load_partition",
     "neuron_activity_rates",
     "Partition",
+    "plot_feature_embedding",
     "precompile",
     "Region",
     "region_size_summary",

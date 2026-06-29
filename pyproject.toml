@@ -45,6 +45,7 @@ dependencies = [
 [project.optional-dependencies]
 h5 = ["h5py>=3.8"]
 animate = ["matplotlib>=3.5"]
+embed = ["umap-learn>=0.5"]
 dev = [
     "pytest>=7.0",
     "pytest-cov",
