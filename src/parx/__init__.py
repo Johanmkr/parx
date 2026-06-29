@@ -28,7 +28,7 @@ from parx.network import extract_features, load_network
 from parx.partition import Partition
 from parx.precompile import precompile
 from parx.region import Region
-from parx.viz import animate_epochs, animate_epochs_video, plot_feature_embedding
+from parx.viz import animate_epochs, animate_epochs_video, plot_feature_embedding, region_palette
 
 check_julia()
 
@@ -52,6 +52,7 @@ __all__ = [
     "plot_feature_embedding",
     "precompile",
     "Region",
+    "region_palette",
     "region_size_summary",
     "save_partition",
 ]

@@ -201,6 +201,29 @@ def __(X, mo, model, parx):
     return (partition,)
 
 
+# ── colour scheme selector ────────────────────────────────────────────────────
+
+@app.cell
+def __(mo):
+    colour_dropdown = mo.ui.dropdown(
+        options={
+            "Spatial (HSV — angle + radius)": "spatial",
+            "Frobenius norm (Viridis)": "frobenius",
+            "Random (Turbo)": "random",
+        },
+        value="Spatial (HSV — angle + radius)",
+        label="Region colour scheme",
+    )
+    colour_dropdown
+    return (colour_dropdown,)
+
+
+@app.cell
+def __(colour_dropdown, parx, partition):
+    region_colors = parx.region_palette(partition, colour_dropdown.value)
+    return (region_colors,)
+
+
 # ── partition plot ─────────────────────────────────────────────────────────────
 
 @app.cell
@@ -208,19 +231,27 @@ def __(mo):
     mo.md(r"""
     ### Linear regions in input space
 
-    Each polygon is one linear region, clipped to the data bounding box. Colour
-    encodes ‖A‖_F — the Frobenius norm of the region's local affine map. Dense
-    small regions near the centre mark the decision boundary.
+    Each polygon is one linear region, clipped to the data bounding box. The
+    colour scheme is selected above:
+
+    - **Spatial (HSV)** — hue encodes the angle of the region's centroid from
+      the partition centre; saturation encodes radial distance. Adjacent regions
+      in input space get visually adjacent colours.
+    - **Frobenius norm** — colour encodes ‖A‖_F, the local affine map's
+      Frobenius norm. Dense small regions near the decision boundary tend to
+      have larger norms.
+    - **Random (Turbo)** — each region gets a distinct hue from the Turbo
+      palette in region-index order.
     """)
     return
 
 
 @app.cell
-def __(X, mo, np, parx, partition):
+def __(X, mo, parx, partition, region_colors):
     _pad = 0.35
     _xr = (float(X[:, 0].min()) - _pad, float(X[:, 0].max()) + _pad)
     _yr = (float(X[:, 1].min()) - _pad, float(X[:, 1].max()) + _pad)
-    _fig = parx.viz.plot_partition_2d(partition, domain=(_xr, _yr))
+    _fig = parx.viz.plot_partition_2d(partition, domain=(_xr, _yr), colors=region_colors)
     _fig.update_layout(
         title=f"Partition — {len(partition)} regions",
         width=500, height=460,
@@ -279,7 +310,7 @@ def __(mo):
 
 
 @app.cell
-def __(X, features, mo, np, parx, partition, y):
+def __(X, features, mo, np, parx, partition, region_colors, y):
     def _embed_fig(method, color_by, title):
         return parx.plot_feature_embedding(
             features, partition, X,
@@ -290,11 +321,11 @@ def __(X, features, mo, np, parx, partition, y):
         )
 
     with mo.status.spinner(title="Running tSNE …"):
-        _tsne_region = _embed_fig("tsne", "region",  "tSNE — by region")
+        _tsne_region = _embed_fig("tsne", region_colors, "tSNE — by region")
         _tsne_class  = _embed_fig("tsne", y.astype(np.float64), "tSNE — by class")
 
     with mo.status.spinner(title="Running UMAP …"):
-        _umap_region = _embed_fig("umap", "region",  "UMAP — by region")
+        _umap_region = _embed_fig("umap", region_colors, "UMAP — by region")
         _umap_class  = _embed_fig("umap", y.astype(np.float64), "UMAP — by class")
 
     for _f in [_tsne_region, _tsne_class, _umap_region, _umap_class]:

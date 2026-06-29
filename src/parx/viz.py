@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import colorsys
+
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
@@ -160,6 +162,49 @@ def active_neuron_count(_partition: Partition, region: Region) -> float:
     return float(sum(int(q.sum()) for q in region.activation_path))
 
 
+def _spatial_colors(regions: list[Region]) -> list[str]:
+    """HSV colors keyed to centroid position: hue = angle, saturation = radius."""
+    centroids = np.array([r.centroid for r in regions], dtype=float)
+    cx, cy = centroids.mean(axis=0)
+    dx, dy = centroids[:, 0] - cx, centroids[:, 1] - cy
+    angles = np.arctan2(dy, dx)
+    radii = np.hypot(dx, dy)
+    r_max = radii.max() if radii.max() > 1e-12 else 1.0
+    hues = (angles / (2 * np.pi) + 0.5) % 1.0
+    sats = 0.35 + 0.65 * (radii / r_max)
+    out = []
+    for h, s in zip(hues, sats):
+        r, g, b = colorsys.hsv_to_rgb(h, s, 0.88)
+        out.append(f"rgb({int(r * 255)},{int(g * 255)},{int(b * 255)})")
+    return out
+
+
+def region_palette(partition: Partition, scheme: str = "random") -> list[str]:
+    """Return one CSS colour string per region in ``partition.regions``.
+
+    Parameters
+    ----------
+    partition : Partition
+    scheme : 'random', 'frobenius', or 'spatial'
+        ``'random'`` — Turbo palette indexed by region order.
+        ``'frobenius'`` — Viridis palette ordered by ``‖A‖_F``.
+        ``'spatial'`` — HSV colour keyed to centroid angle (hue) and
+        radial distance from the mean centroid (saturation).
+    """
+    regions = partition.regions
+    n = len(regions)
+    if scheme == "random":
+        return list(px.colors.sample_colorscale("Turbo", [i / max(n - 1, 1) for i in range(n)]))
+    if scheme == "frobenius":
+        metrics = np.array([affine_frobenius(partition, r) for r in regions], dtype=float)
+        span = metrics.max() - metrics.min()
+        normed = (metrics - metrics.min()) / (span if span > 1e-12 else 1.0)
+        return list(px.colors.sample_colorscale("Viridis", normed))
+    if scheme == "spatial":
+        return _spatial_colors(regions)
+    raise ValueError(f"unknown scheme {scheme!r}; choose 'random', 'frobenius', or 'spatial'")
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
@@ -175,6 +220,7 @@ def plot_partition_2d(
     color_label: str | None = None,
     log_color: bool = False,
     colorscale: str = "Viridis",
+    colors: list[str] | None = None,
 ) -> go.Figure:
     """Draw each linear region as a filled, crisp polygon.
 
@@ -216,6 +262,12 @@ def plot_partition_2d(
     colorscale : str
         Any Plotly colorscale name (``"Viridis"`` default, ``"Turbo"``,
         ``"Plasma"``, …).
+    colors : list[str] or None
+        Pre-computed CSS colour strings — one per region in
+        ``partition.regions`` (or per ``plot_regions`` when ``layer`` is set).
+        When provided, ``color_by``, ``colorscale``, and ``log_color`` are
+        ignored and no colourbar is shown.  Use :func:`region_palette` to
+        generate a matching list.
 
     Returns
     -------
@@ -259,8 +311,14 @@ def plot_partition_2d(
         x_range = x_range or auto_x
         y_range = y_range or auto_y
 
-    if color_by is None:
-        # Fallback: discrete Turbo palette, no colourbar, no per-region metric.
+    if colors is not None:
+        # Pre-computed palette: bypass color_by entirely, no colourbar.
+        metrics = None
+        scaled = None
+        m_min = m_max = None
+        label_str = None
+    elif color_by is None:
+        # Discrete Turbo palette, no colourbar, no per-region metric.
         colors = px.colors.sample_colorscale(
             "Turbo", [i / max(n - 1, 1) for i in range(n)]
         )
@@ -1382,16 +1440,21 @@ def plot_feature_embedding(
 
     fig = go.Figure()
 
-    if isinstance(color_by, str) and color_by == "region":
+    if isinstance(color_by, list) or (isinstance(color_by, str) and color_by == "region"):
+        # Per-region discrete palette: either pre-computed list[str] or Turbo by index.
         n_regions = len(partition.regions)
         routed_mask = region_ids >= 0
         unrouted_mask = ~routed_mask
-
         routed_indices = np.where(routed_mask)[0]
-        color_list = px.colors.sample_colorscale(
-            "Turbo",
-            [region_ids[i] / max(n_regions - 1, 1) for i in routed_indices],
-        )
+
+        if isinstance(color_by, list):
+            palette = color_by  # N region colors, index by region_id
+            color_list = [palette[region_ids[i]] for i in routed_indices]
+        else:
+            color_list = px.colors.sample_colorscale(
+                "Turbo",
+                [region_ids[i] / max(n_regions - 1, 1) for i in routed_indices],
+            )
         hover_strings = [
             f"Region {rid}<br>{_activation_label(r)}" if r is not None else "outside"
             for rid, r in zip(region_ids, routed)
