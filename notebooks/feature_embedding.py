@@ -5,6 +5,9 @@
 #   "torch",
 #   "numpy",
 #   "scikit-learn",
+#   "llvmlite>=0.42",
+#   "numba>=0.59",
+#   "umap-learn>=0.5.5",
 #   "plotly",
 #   "parx @ file:///home/johan/Documents/phd/parx",
 # ]
@@ -15,6 +18,8 @@ import marimo
 __generated_with = "0.13.0"
 app = marimo.App(width="medium")
 
+
+# ── imports ───────────────────────────────────────────────────────────────────
 
 @app.cell
 def __():
@@ -32,6 +37,8 @@ def __():
     return make_moons, nn, np, parx, torch
 
 
+# ── title ─────────────────────────────────────────────────────────────────────
+
 @app.cell
 def __(mo):
     mo.md(r"""
@@ -41,98 +48,94 @@ def __(mo):
     connected subsets where the network is a fixed affine map. `parx` computes
     this partition exactly.
 
-    The question explored here: if you take the activations just before the
-    classification head (the *penultimate features*) and project them with tSNE,
-    do points from the **same region** cluster together, and do points from
-    **neighbouring regions** land nearby?
+    **The question explored here:** if you project the network's internal
+    activations at some hidden layer down to 2D with tSNE or UMAP, do points
+    from the *same linear region* cluster together, and do *neighbouring regions*
+    land nearby?
 
-    The answer must be yes in a precise sense — within each linear region the
-    whole network is affine, so the feature map is affine too. Points in the same
-    region lie on the same low-dimensional affine subspace of feature space. The
-    notebook makes this visible.
+    The answer is yes in a precise sense. Within each linear region the whole
+    network is affine, so activations at any layer are an affine function of the
+    2D input. Points in the same region therefore lie on the same 2-dimensional
+    affine subspace of the activation space — they *must* cluster. The notebook
+    makes this visible across different architectures and extraction layers.
+
+    Use the controls below to pick an architecture and a layer. The partition,
+    feature extraction, and both embeddings update reactively.
     """)
     return
 
 
-@app.cell
-def __(mo):
-    mo.md(r"""
-    ## Step 1 · Data
-
-    We use the two-moons dataset: 500 points in 2D, two interleaved half-circles.
-    The low dimensionality lets us draw the exact partition as polygons and compare
-    it directly to the tSNE embedding.
-    """)
-    return
-
+# ── data ──────────────────────────────────────────────────────────────────────
 
 @app.cell
 def __(make_moons, np):
-    X, y = make_moons(n_samples=500, noise=0.15, random_state=0)
+    X, y = make_moons(n_samples=600, noise=0.12, random_state=0)
     X = X.astype(np.float64)
-    print(f"X shape: {X.shape}   (500 points, 2D input)")
-    print(f"Classes: {np.unique(y).tolist()}   (0 = upper moon, 1 = lower moon)")
     return X, y
 
 
 @app.cell
-def __(X, np, parx, y):
-    import plotly.graph_objects as go
-
+def __(X, go, mo, y):
     _colors = ["#4878d0" if yi == 0 else "#ee854a" for yi in y]
-    _fig_data = go.Figure(go.Scatter(
-        x=X[:, 0], y=X[:, 1],
-        mode="markers",
+    _fig = go.Figure(go.Scatter(
+        x=X[:, 0], y=X[:, 1], mode="markers",
         marker=dict(color=_colors, size=5, opacity=0.7),
         text=[f"class {yi}" for yi in y],
         hovertemplate="%{text}<extra></extra>",
         showlegend=False,
     ))
-    _fig_data.update_layout(
-        title="Two-moons dataset",
+    _fig.update_layout(
+        title="Two-moons dataset (600 points, 2D input)",
         xaxis=dict(title="x₁", scaleanchor="y", scaleratio=1),
-        yaxis_title="x₂",
-        width=480, height=420,
+        yaxis_title="x₂", width=460, height=400,
     )
-    _fig_data
-    return (go,)
-
-
-@app.cell
-def __(mo):
-    mo.md(r"""
-    ## Step 2 · Network architecture
-
-    We train a small MLP with two hidden layers of **32 neurons** each:
-
-    ```
-    Input (2D)
-      └─ Linear(2 → 32)  +  ReLU      ← hidden layer 1: 32 neurons
-           └─ Linear(32 → 32)  +  ReLU  ← hidden layer 2: 32 neurons
-                └─ Linear(32 → 2)         ← output / classification head
-    ```
-
-    The output of hidden layer 2 is a **32-dimensional vector**. This is the
-    representation that the classifier sees — we will call it the *penultimate
-    feature vector*. It is what `parx.extract_features` captures.
-
-    Each ReLU layer introduces hyperplane boundaries. With 32 neurons per layer
-    and a 2D input, the network can produce at most a few hundred distinct linear
-    regions (fewer in practice because most patterns are unreachable).
-    """)
+    mo.center(_fig)
     return
 
 
 @app.cell
-def __(X, make_moons, nn, np, torch, y):
-    def make_model():
-        return nn.Sequential(
-            nn.Linear(2, 32),  nn.ReLU(),   # hidden layer 1
-            nn.Linear(32, 32), nn.ReLU(),   # hidden layer 2
-            nn.Linear(32, 2),               # classification head
-        )
+def __():
+    import plotly.graph_objects as go
+    return (go,)
 
-    def _train(model, X, y, epochs=400, lr=5e-3):
+
+# ── architecture selector ──────────────────────────────────────────────────────
+
+@app.cell
+def __(mo):
+    # hidden layer sizes; model is always input(2) → hidden layers → output(2)
+    _arch_options = {
+        "Tiny     2 → 8 → 8 → 2":               [8, 8],
+        "Small    2 → 16 → 16 → 2":              [16, 16],
+        "Medium   2 → 32 → 32 → 2":              [32, 32],
+        "Wide     2 → 64 → 64 → 2":              [64, 64],
+        "Deep-narrow    2 → 16 → 16 → 16 → 2":  [16, 16, 16],
+        "Deep-medium    2 → 32 → 32 → 32 → 2":  [32, 32, 32],
+        "Bottleneck     2 → 32 → 8 → 32 → 2":   [32, 8, 32],
+    }
+    arch_dropdown = mo.ui.dropdown(
+        options=_arch_options,
+        value="Medium   2 → 32 → 32 → 2",
+        label="Architecture",
+    )
+    arch_dropdown
+    return (arch_dropdown,)
+
+
+# ── build and train model ──────────────────────────────────────────────────────
+
+@app.cell
+def __(X, arch_dropdown, nn, np, torch, y):
+    def _build(hidden_sizes):
+        sizes = [2] + hidden_sizes + [2]
+        layers = []
+        for i in range(len(sizes) - 1):
+            layers.append(nn.Linear(sizes[i], sizes[i + 1]))
+            if i < len(sizes) - 2:
+                layers.append(nn.ReLU())
+        return nn.Sequential(*layers)
+
+    def _train(model, epochs=500, lr=5e-3):
         opt = torch.optim.Adam(model.parameters(), lr=lr)
         loss_fn = nn.CrossEntropyLoss()
         Xt = torch.tensor(X, dtype=torch.float32)
@@ -145,180 +148,194 @@ def __(X, make_moons, nn, np, torch, y):
         model.eval()
 
     torch.manual_seed(0)
-    model = make_model()
-    _train(model, X, y)
+    model = _build(arch_dropdown.value)
+    _train(model)
 
     with torch.no_grad():
         _logits = model(torch.tensor(X, dtype=torch.float32))
-        acc = (_logits.argmax(dim=1).numpy() == y).mean()
+        _acc = (_logits.argmax(dim=1).numpy() == y).mean()
 
-    print(f"Training accuracy: {acc:.1%}")
-    return acc, make_model, model
+    # label each extractable layer
+    _linears = [m for m in model.modules() if isinstance(m, nn.Linear)]
+    _layer_opts = {}
+    for _i in range(1, len(_linears)):
+        _dim = _linears[_i].in_features
+        if _i == len(_linears) - 1:
+            _label = f"Before output head  ({_dim}D activations)"
+        else:
+            _label = f"After hidden layer {_i}  ({_dim}D activations)"
+        _layer_opts[_label] = _i
 
+    arch_summary = (
+        f"**Architecture:** `{arch_dropdown.value}`  →  "
+        f"{len(_linears) - 1} hidden layer(s), "
+        f"{sum(p.numel() for p in model.parameters())} parameters  |  "
+        f"training accuracy **{_acc:.1%}**"
+    )
+    layer_options = _layer_opts
+    return arch_summary, layer_options, model
+
+
+# ── layer selector ────────────────────────────────────────────────────────────
 
 @app.cell
-def __(mo):
-    mo.md(r"""
-    ## Step 3 · Exact polyhedral partition
+def __(arch_summary, layer_options, mo):
+    layer_dropdown = mo.ui.dropdown(
+        options=layer_options,
+        value=list(layer_options.keys())[-1],   # default: before output head
+        label="Extract features from",
+    )
+    mo.vstack([
+        mo.md(arch_summary),
+        layer_dropdown,
+    ])
+    return (layer_dropdown,)
 
-    `parx.compute_partition` traces through every reachable activation pattern
-    and records the resulting linear region. The sparse Julia method does a
-    parallel forward-pass scan over the training data; the exact method would
-    also find regions not covered by any training point.
-    """)
-    return
 
+# ── compute partition ──────────────────────────────────────────────────────────
 
 @app.cell
-def __(X, model, parx):
-    partition = parx.compute_partition(model, X, method="sparse_julia")
-    print(f"Regions found: {len(partition)}")
+def __(X, mo, model, parx):
+    with mo.status.spinner(title="Computing partition …"):
+        partition = parx.compute_partition(model, X, method="sparse_julia")
     return (partition,)
 
 
+# ── partition plot ─────────────────────────────────────────────────────────────
+
 @app.cell
 def __(mo):
     mo.md(r"""
-    ### Partition visualised in input space
+    ### Linear regions in input space
 
-    Each coloured polygon is one linear region, clipped to the data bounding box.
-    The colour encodes ‖A‖_F — the Frobenius norm of that region's local affine
-    map — which measures how strongly the network stretches inputs in that area.
-    Small, dense regions near the centre mark where the decision boundary runs.
+    Each polygon is one linear region, clipped to the data bounding box. Colour
+    encodes ‖A‖_F — the Frobenius norm of the region's local affine map. Dense
+    small regions near the centre mark the decision boundary.
     """)
     return
 
 
 @app.cell
-def __(X, np, parx, partition):
+def __(X, mo, np, parx, partition):
     _pad = 0.35
     _xr = (float(X[:, 0].min()) - _pad, float(X[:, 0].max()) + _pad)
     _yr = (float(X[:, 1].min()) - _pad, float(X[:, 1].max()) + _pad)
+    _fig = parx.viz.plot_partition_2d(partition, domain=(_xr, _yr))
+    _fig.update_layout(
+        title=f"Partition — {len(partition)} regions",
+        width=500, height=460,
+    )
+    mo.center(_fig)
+    return
 
-    fig_2d = parx.viz.plot_partition_2d(partition, domain=(_xr, _yr))
-    fig_2d.update_layout(width=520, height=480)
-    fig_2d
-    return (fig_2d,)
 
+# ── feature extraction ────────────────────────────────────────────────────────
 
 @app.cell
 def __(mo):
     mo.md(r"""
-    ## Step 4 · Extract penultimate features
+    ### Feature extraction
 
-    `parx.extract_features` attaches a PyTorch forward hook to the **last
-    `nn.Linear` layer** (the classification head, `Linear(32 → 2)`), and
-    captures the tensor flowing **into** it — i.e., the 32-dimensional output
-    of hidden layer 2 after its ReLU.
-
-    ```
-    hidden layer 2 output  →  [hook captures here]  →  Linear(32 → 2)  →  logits
-    ```
-
-    This gives one 32-dimensional vector per input point. The hook is removed
-    immediately after the forward pass; the model is not modified.
+    `parx.extract_features` attaches a forward hook to the chosen Linear layer
+    and captures its **input tensor** — the post-ReLU activations flowing into
+    that layer. Within each linear region the network is affine end-to-end, so
+    these activations are an affine function of the 2D input. Points in the same
+    region lie on the same 2D affine subspace of the (higher-dimensional)
+    activation space.
     """)
     return
 
 
 @app.cell
-def __(X, model, parx):
-    features = parx.extract_features(model, X, layer_index=-1)
-    print(f"features shape: {features.shape}")
-    print(f"  → {features.shape[0]} points, each described by {features.shape[1]} numbers")
-    print(f"    (the 32 activations of hidden layer 2, after ReLU)")
+def __(X, layer_dropdown, mo, model, parx):
+    with mo.status.spinner(title="Extracting features …"):
+        features = parx.extract_features(model, X, layer_index=layer_dropdown.value)
+    mo.md(
+        f"Extracted **{features.shape[1]}D** activations from "
+        f"`layer_index={layer_dropdown.value}` "
+        f"→ array shape `{features.shape}`"
+    )
     return (features,)
 
 
+# ── embeddings ────────────────────────────────────────────────────────────────
+
 @app.cell
 def __(mo):
     mo.md(r"""
-    ## Step 5 · tSNE of features, coloured by linear region
+    ### tSNE and UMAP of the extracted features
 
-    tSNE projects the 500 × 32 feature matrix down to 2D, preserving local
-    neighbourhood structure. We then colour each point by which linear region
-    it belongs to, as determined by `partition.route(X)`.
+    Both methods project the high-dimensional activations to 2D. Points are
+    coloured two ways:
 
-    **What to expect:** Points in the same linear region share an identical
-    affine map, so their features differ only by an affine function of their
-    2D input displacement. They lie on the same 2-dimensional affine subspace
-    of ℝ³². tSNE will collapse each such subspace to a tight cluster — and
-    neighbouring regions (one ReLU flip apart) should land in adjacent clusters.
-
-    Grey × markers are points the sparse partition did not cover.
+    - **By linear region** (left pair) — same colour = same affine map. Tight
+      monochromatic clusters confirm that the region structure is preserved in
+      feature space.
+    - **By class label** (right pair) — comparing this with the region colouring
+      shows how many affine pieces the network used per class and where class
+      boundaries fall relative to region boundaries.
     """)
     return
 
 
 @app.cell
-def __(X, features, parx, partition):
-    fig_region = parx.plot_feature_embedding(
-        features, partition, X,
-        method="tsne",
-        color_by="region",
-        title="tSNE of hidden-layer-2 features — coloured by linear region",
-        random_state=0,
-    )
-    fig_region
-    return (fig_region,)
+def __(X, features, mo, np, parx, partition, y):
+    def _embed_fig(method, color_by, title):
+        return parx.plot_feature_embedding(
+            features, partition, X,
+            method=method,
+            color_by=color_by,
+            title=title,
+            random_state=0,
+        )
 
+    with mo.status.spinner(title="Running tSNE …"):
+        _tsne_region = _embed_fig("tsne", "region",  "tSNE — by region")
+        _tsne_class  = _embed_fig("tsne", y.astype(np.float64), "tSNE — by class")
 
-@app.cell
-def __(mo):
-    mo.md(r"""
-    ## Step 6 · Same tSNE, coloured by class label
+    with mo.status.spinner(title="Running UMAP …"):
+        _umap_region = _embed_fig("umap", "region",  "UMAP — by region")
+        _umap_class  = _embed_fig("umap", y.astype(np.float64), "UMAP — by class")
 
-    We reuse the same tSNE layout (`random_state=0` makes it reproducible) but
-    swap the colour to ground-truth class. This lets us directly compare the
-    region structure with the class structure.
+    for _f in [_tsne_region, _tsne_class, _umap_region, _umap_class]:
+        _f.update_layout(width=400, height=380, margin=dict(t=40, b=20, l=20, r=20))
 
-    A well-trained network organises its feature space so that different classes
-    map to different regions. If the two colour maps agree, the partition and
-    the classification are consistent. Where they disagree — e.g., one class
-    spans several region colours — the network needed multiple affine pieces to
-    represent the curved decision boundary.
-    """)
+    mo.vstack([
+        mo.hstack([_tsne_region, _tsne_class], justify="center"),
+        mo.hstack([_umap_region, _umap_class], justify="center"),
+    ])
     return
 
 
-@app.cell
-def __(X, features, np, parx, partition, y):
-    fig_class = parx.plot_feature_embedding(
-        features, partition, X,
-        method="tsne",
-        color_by=y.astype(np.float64),
-        title="tSNE of hidden-layer-2 features — coloured by class label",
-        random_state=0,
-    )
-    fig_class
-    return (fig_class,)
-
+# ── interpretation ────────────────────────────────────────────────────────────
 
 @app.cell
 def __(mo):
     mo.md(r"""
-    ## Step 7 · Reading the results
+    ### Reading the plots
 
-    **Region coluring clusters tightly** — each region forms a compact blob in
-    the tSNE, confirming the affine-subspace argument. Colour transitions between
-    adjacent blobs correspond to neighbouring regions in input space.
+    **Tight monochromatic clusters in the region plot** confirm the geometric
+    argument: the affine map within each region collapses the 2D affine subspace
+    to a single point in tSNE/UMAP space.
 
-    **Class and region colourings are largely consistent** — the network has
-    learned to place the two moons in different parts of feature space, and those
-    parts are further subdivided into regions.
+    **Smooth colour gradients at cluster edges** indicate neighbouring regions
+    — sharing a face in input space means differing by one ReLU flip, so their
+    affine maps are close and their feature clouds land nearby in the embedding.
 
-    **One class, multiple region colours** — each moon is not a single flat
-    region; the network uses several affine pieces to approximate the curved
-    boundary. In the tSNE these appear as a group of differently-coloured blobs
-    that are spatially adjacent. Counting how many blobs per class gives a rough
-    measure of how many affine pieces the network devoted to each part of the
-    decision boundary.
+    **One class colour, multiple region colours** is expected and informative.
+    A curved decision boundary requires multiple affine pieces; the number of
+    region-colour blobs per class is a direct count of how many pieces the
+    network allocated to that class.
 
-    **Scalability note** — for networks with input dimension > 2 the direct
-    partition plot is unavailable, but this tSNE-of-features view works
-    regardless of input dimension. It is not a geometric substitute (it cannot
-    recover region shapes), but it faithfully reveals adjacency structure and
-    how the partition relates to the task.
+    **tSNE vs UMAP** — tSNE preserves local structure (nearby clusters are
+    reliable) but distorts global distances. UMAP better preserves the large-scale
+    topology of how region groups relate to each other. Using both gives a more
+    complete picture.
+
+    **Changing the extraction layer** shows how the representation evolves
+    through the network. Early layers produce coarser clusters (fewer active
+    neurons, simpler affine maps); later layers produce tighter, more
+    class-aligned clusters as the network funnels towards the decision.
     """)
     return
 
