@@ -89,7 +89,7 @@ from parx.viz import (
     plot_partition_2d,         # 2D input space; color by metric
     plot_partition_slice,      # slice higher-dim partition to 2D
     plot_partition_projection, # project halfspace normals to 2D
-    plot_partition_pca,        # PCA projection (requires parx[analysis])
+    plot_partition_pca,        # PCA projection (requires scikit-learn)
     plot_region_counts,        # bar chart of regions per layer
     plot_halfspaces,           # halfspace boundary overlay
 )
