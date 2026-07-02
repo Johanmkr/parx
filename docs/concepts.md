@@ -79,7 +79,7 @@ partition = compute_partition(model, X, method="sparse_julia")
 **Cost:** Exponential in the worst case. A 2×5×5×5 network (input_dim=2, three layers of 5 neurons each) typically has hundreds of regions and takes seconds. A 2×20×20 network may have thousands of regions and take minutes. Beyond that, exact enumeration is currently impractical.
 
 ```python
-x0 = np.zeros(input_dim)              # only data[0] is used
+x0 = np.zeros((1, input_dim))              # only data[0] is used
 partition = compute_partition(model, x0, method="exact_julia")
 ```
 
