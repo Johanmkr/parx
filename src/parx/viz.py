@@ -214,8 +214,16 @@ def _mpl_resolve_colors(
     metrics = np.array([color_by(partition, r) for r in plot_regions], dtype=float)
     scaled = np.log10(np.maximum(metrics, 1e-12)) if log_color else metrics
     m_min, m_max = float(scaled.min()), float(scaled.max())
+    if m_max - m_min < 1e-12:
+        m_max = m_min + 1e-12
     norm = ns.mcolors.Normalize(vmin=m_min, vmax=m_max)
-    cmap = ns.mpl.colormaps[colorscale.lower()]
+    try:
+        cmap = ns.mpl.colormaps[colorscale.lower()]
+    except KeyError as e:
+        raise ValueError(
+            f"unknown colorscale {colorscale!r} for matplotlib backend; "
+            "choose a matplotlib colormap name"
+        ) from e
     facecolors = [cmap(norm(v)) for v in scaled]
     label_str = getattr(color_by, "__name__", "metric")
     return facecolors, cmap, norm, metrics, label_str
