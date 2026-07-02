@@ -61,8 +61,7 @@ animate_epochs_video(partitions, "evolution.gif", epoch_labels=labels)
 
 ```python
 # Exact enumeration: complete partition from a single starting point
-partition = parx.compute_partition(model, np.zeros(2), method="exact_julia")
-
+partition = parx.compute_partition(model, np.zeros((1, 2)), method="exact_julia")
 # Every region has geometry
 for region in partition.regions:
     D, g  = partition.halfspaces(region)         # polytope constraints
