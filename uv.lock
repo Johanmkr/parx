@@ -1680,12 +1680,15 @@ animate = [
     { name = "matplotlib" },
 ]
 dev = [
+    { name = "h5py" },
     { name = "kaleido" },
     { name = "matplotlib" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 embed = [
     { name = "umap-learn" },
@@ -1696,6 +1699,7 @@ h5 = [
 
 [package.metadata]
 requires-dist = [
+    { name = "h5py", marker = "extra == 'dev'", specifier = ">=3.8" },
     { name = "h5py", marker = "extra == 'h5'", specifier = ">=3.8" },
     { name = "juliacall", specifier = ">=0.9.0" },
     { name = "kaleido", marker = "extra == 'dev'" },
@@ -1708,6 +1712,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },
+    { name = "scikit-learn", marker = "extra == 'dev'", specifier = ">=1.3" },
     { name = "scipy", specifier = ">=1.10" },
     { name = "torch", specifier = ">=2.0" },
     { name = "umap-learn", marker = "extra == 'embed'", specifier = ">=0.5" },

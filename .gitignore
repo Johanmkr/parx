@@ -47,3 +47,6 @@ examples/output/
 # Jupyter (if you add notebooks later)
 .ipynb_checkpoints/
 *.ipynb
+
+# marimo
+__marimo__/
