@@ -7,7 +7,9 @@ parx exactly enumerates and analyzes the linear (polyhedral activation) regions 
 
 > Alpha software — the API is still evolving.
 
-For a conceptual introduction — what parx computes, how sparse vs. exact enumeration differ, the data pipeline, workflow examples, and current limitations — see **[OVERVIEW.md](OVERVIEW.md)**.
+**Docs site:** [johanmkr.github.io/parx](https://johanmkr.github.io/parx/) — includes the two demo notebooks below, rendered and browsable without cloning the repo.
+
+For a conceptual introduction — what parx computes, how sparse vs. exact enumeration differ, the data pipeline, workflow examples, and current limitations — see **[OVERVIEW.md](OVERVIEW.md)** (also on the docs site).
 
 ## What parx computes
 

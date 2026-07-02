@@ -1,0 +1,39 @@
+site_name: parx
+site_description: Exact enumeration of linear regions in ReLU neural networks
+site_url: https://johanmkr.github.io/parx/
+repo_url: https://github.com/Johanmkr/parx
+repo_name: Johanmkr/parx
+
+nav:
+  - Home: index.md
+  - Concepts: concepts.md
+  - Usage: usage.md
+  - Notebooks: notebooks/index.md
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.top
+    - content.code.copy
+
+markdown_extensions:
+  - tables
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - toc:
+      permalink: true
