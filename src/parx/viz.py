@@ -168,12 +168,22 @@ def _require_matplotlib(caller: str) -> SimpleNamespace:
 
 
 def _css_rgb_to_mpl(css: str) -> tuple[float, float, float]:
-    """Convert a Plotly ``"rgb(r,g,b)"`` string to a 0–1 matplotlib RGB tuple."""
-    m = _CSS_RGB_RE.match(css)
-    if not m:
-        raise ValueError(f"cannot parse CSS color {css!r} as rgb(r,g,b)")
-    r, g, b = (int(v) / 255.0 for v in m.groups())
-    return (r, g, b)
+    """Convert a CSS color string to a 0–1 matplotlib RGB tuple.
+
+    Supports Plotly-style ``"rgb(r,g,b)"`` strings as well as hex and named colors.
+    """
+    m = _CSS_RGB_RE.fullmatch(css.strip())
+    if m:
+        r, g, b = (int(v) / 255.0 for v in m.groups())
+        return (r, g, b)
+
+    # Fallback for other CSS-like formats (e.g. "#ff0000", "tab:blue").
+    import matplotlib.colors as mcolors
+
+    try:
+        return mcolors.to_rgb(css)
+    except ValueError as e:
+        raise ValueError(f"cannot parse CSS color {css!r}") from e
 
 
 def _mpl_resolve_colors(
@@ -204,8 +214,16 @@ def _mpl_resolve_colors(
     metrics = np.array([color_by(partition, r) for r in plot_regions], dtype=float)
     scaled = np.log10(np.maximum(metrics, 1e-12)) if log_color else metrics
     m_min, m_max = float(scaled.min()), float(scaled.max())
+    if m_max - m_min < 1e-12:
+        m_max = m_min + 1e-12
     norm = ns.mcolors.Normalize(vmin=m_min, vmax=m_max)
-    cmap = ns.mpl.colormaps[colorscale.lower()]
+    try:
+        cmap = ns.mpl.colormaps[colorscale.lower()]
+    except KeyError as e:
+        raise ValueError(
+            f"unknown colorscale {colorscale!r} for matplotlib backend; "
+            "choose a matplotlib colormap name"
+        ) from e
     facecolors = [cmap(norm(v)) for v in scaled]
     label_str = getattr(color_by, "__name__", "metric")
     return facecolors, cmap, norm, metrics, label_str
@@ -578,6 +596,7 @@ def plot_partition_2d(
 
 def plot_region_counts(
     partition: Partition,
+    *,
     backend: Literal["plotly", "matplotlib"] = "plotly",
 ) -> go.Figure | matplotlib.figure.Figure:
     """Bar chart of distinct region count at each depth.
@@ -1198,6 +1217,7 @@ def plot_halfspaces(
     region: Region,
     x_range: tuple[float, float] = (-2.0, 2.0),
     y_range: tuple[float, float] = (-2.0, 2.0),
+    *,
     backend: Literal["plotly", "matplotlib"] = "plotly",
 ) -> go.Figure | matplotlib.figure.Figure:
     """Draw the halfspace boundaries that define a single region.
