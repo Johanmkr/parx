@@ -146,6 +146,9 @@ for epoch, state_dict in iter_state_dicts("checkpoints/"):
 fig = animate_epochs(partitions, domain=((-1, 1), (-1, 1)))
 fig.show()
 
+# Matplotlib FuncAnimation instead — no slider, but playable via .to_jshtml()
+anim = animate_epochs(partitions, backend="matplotlib")
+
 # Export to MP4/GIF
 animate_epochs_video(partitions, domain=((-1, 1), (-1, 1)), path="partition.gif")
 ```
@@ -164,7 +167,7 @@ from parx.verify import (
 
 ### Visualization
 
-All functions return `plotly.graph_objects.Figure`.
+Every plotting function accepts a keyword-only `backend: Literal["plotly", "matplotlib"] = "plotly"` argument. `"plotly"` (default) returns an interactive `plotly.graph_objects.Figure`; `"matplotlib"` returns a static `matplotlib.figure.Figure` (or `matplotlib.animation.FuncAnimation` for `animate_epochs`) and requires `pip install "parx[animate]"`. Matplotlib output has no hover tooltips, and `animate_epochs(backend="matplotlib")` has no play/pause/slider controls — use `.to_jshtml()` in a notebook or `.save(...)` to export it.
 
 ```python
 from parx.viz import (
@@ -175,6 +178,9 @@ from parx.viz import (
     plot_region_counts,        # bar chart of regions per layer
     plot_halfspaces,           # halfspace boundary overlay
 )
+
+fig = plot_partition_2d(partition, backend="matplotlib")
+fig.savefig("partition.png")
 ```
 
 Color-by callables: `affine_frobenius`, `affine_spectral`, `affine_det`, `active_neuron_count` (all in `parx.viz`).

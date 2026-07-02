@@ -169,9 +169,9 @@ len(partition)                                  # number of regions
          │         │                 │
          ▼         ▼                 ▼
      analyze    visualize         persist
-     stats      Plotly figs    save_partition()
-                               load_partition()
-                                    .npz
+     stats      Plotly/mpl figs  save_partition()
+                                 load_partition()
+                                      .npz
 ```
 
 The critical boundary is the Python↔Julia bridge: Julia does all combinatorially intensive work (forward passes, DFS, LP solves) and returns plain numeric arrays. Python rebuilds the `Partition` from those arrays using only NumPy — no Julia call is needed after `compute_partition` returns.
@@ -281,7 +281,7 @@ These are current constraints, not design goals. See [README.md — Future direc
 
 **Julia startup:** The first call to any Julia-backed method in a process incurs 10–30 seconds of JIT compilation. Call `parx.precompile()` once at startup to amortize this. Subsequent calls within the same process are fast.
 
-**Visualization:** `plot_partition_2d` requires `input_dim == 2`. For higher-dimensional networks use `plot_partition_slice` (fix all but two dimensions) or `plot_partition_projection` (project onto a 2D subspace) — both are approximations.
+**Visualization:** `plot_partition_2d` requires `input_dim == 2`. For higher-dimensional networks use `plot_partition_slice` (fix all but two dimensions) or `plot_partition_projection` (project onto a 2D subspace) — both are approximations. Every plotting function defaults to an interactive Plotly figure; pass `backend="matplotlib"` for a static `matplotlib.figure.Figure` instead (requires `parx[animate]`, no hover tooltips, and `animate_epochs` loses its play/pause/slider controls in favor of a plain `FuncAnimation`).
 
 ---
 
@@ -295,7 +295,7 @@ The design separates concerns sharply:
 | Combinatorial search | Julia | Forward passes, DFS, LP solves |
 | Bridge | juliacall | Zero-copy NumPy↔Julia array passing |
 | Geometry queries | Python (NumPy) | `halfspaces()`, `local_affine()`, routing |
-| Visualization | Python (Plotly) | All plotting |
+| Visualization | Python (Plotly default, matplotlib optional) | All plotting; `backend=` selects engine |
 | Serialization | Python (NumPy `.npz`) | Save/load, no Julia at load time |
 
 Julia is only needed during `compute_partition`. Everything after — analysis, visualization, verification, serialization — is pure Python and runs without Julia. A partition saved to `.npz` can be loaded and analyzed in an environment without Julia installed.

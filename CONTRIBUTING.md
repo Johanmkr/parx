@@ -81,7 +81,7 @@ parx/
         │   └── exact_python.py
         ├── io.py               # iter_state_dicts helper
         ├── verify.py           # overlap/coverage checks
-        ├── viz.py              # Plotly visualizations
+        ├── viz.py              # Plotly (default) / matplotlib visualizations
         ├── juliapkg.json       # Julia runtime dependencies (for juliacall/juliapkg)
         └── julia/
             ├── LinearRegions.jl

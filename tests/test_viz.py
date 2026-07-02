@@ -23,6 +23,18 @@ def _julia(julia_session):
     """Ensure Julia is ready for every test in this module."""
 
 
+@pytest.fixture(autouse=True)
+def _close_mpl_figures():
+    """Close any matplotlib figures opened by a test to avoid pyplot's
+    open-figure buildup across this parametrized test run."""
+    yield
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return
+    plt.close("all")
+
+
 @pytest.fixture(scope="module")
 def simple_partition():
     """4-region identity network partition, reused across tests."""
@@ -38,8 +50,10 @@ def two_layer_partition():
     """2-layer network where 3 leaf regions share one layer-1 activation
     pattern, so layer=1 strictly coarsens (1 region) vs the leaf level (3)."""
     model = nn.Sequential(
-        nn.Linear(2, 2), nn.ReLU(),
-        nn.Linear(2, 2), nn.ReLU(),
+        nn.Linear(2, 2),
+        nn.ReLU(),
+        nn.Linear(2, 2),
+        nn.ReLU(),
         nn.Linear(2, 1),
     )
     with torch.no_grad():
@@ -53,6 +67,8 @@ def two_layer_partition():
 
 # ── plot_partition_2d ─────────────────────────────────────────────────────────
 
+BACKENDS = ["plotly", "matplotlib"]
+
 
 def _polygon_traces(fig):
     """Polygon traces only.
@@ -62,55 +78,97 @@ def _polygon_traces(fig):
     return [t for t in fig.data if t.mode == "lines" and t.fill == "toself"]
 
 
-def test_plot_partition_2d_returns_figure(simple_partition):
+def _require_mpl_figure():
+    """Skip if matplotlib is unavailable; return its Figure class."""
+    pytest.importorskip("matplotlib")
+    import matplotlib.figure
+
+    return matplotlib.figure.Figure
+
+
+def _n_regions_drawn(fig, backend):
+    """Number of region polygons drawn, regardless of backend."""
+    if backend == "plotly":
+        return len(_polygon_traces(fig))
+    return len(fig.axes[0].patches)
+
+
+def _assert_figure_type(fig, backend):
+    if backend == "plotly":
+        assert isinstance(fig, go.Figure)
+    else:
+        assert isinstance(fig, _require_mpl_figure())
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_partition_2d_returns_figure(simple_partition, backend):
     from parx.viz import plot_partition_2d
 
-    fig = plot_partition_2d(simple_partition)  # auto-range
-    assert isinstance(fig, go.Figure)
-    polys = _polygon_traces(fig)
-    assert len(polys) == len(simple_partition)
-    assert all(isinstance(t, go.Scatter) for t in fig.data)
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
+    fig = plot_partition_2d(simple_partition, backend=backend)  # auto-range
+    _assert_figure_type(fig, backend)
+    assert _n_regions_drawn(fig, backend) == len(simple_partition)
 
 
-def test_plot_partition_2d_polygons_have_vertices(simple_partition):
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_partition_2d_polygons_have_vertices(simple_partition, backend):
     from parx.viz import plot_partition_2d
 
-    fig = plot_partition_2d(simple_partition)
-    for trace in _polygon_traces(fig):
-        assert len(trace.x) >= 4  # at least triangle + closing point
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
+    fig = plot_partition_2d(simple_partition, backend=backend)
+    if backend == "plotly":
+        for trace in _polygon_traces(fig):
+            assert len(trace.x) >= 4  # at least triangle + closing point
+    else:
+        for patch in fig.axes[0].patches:
+            assert len(patch.get_xy()) >= 3
 
 
 def test_plot_partition_2d_hover_contains_activation(simple_partition):
     from parx.viz import plot_partition_2d
 
+    # Hover tooltips are a Plotly-only feature; matplotlib has no equivalent.
     fig = plot_partition_2d(simple_partition)
     for trace in _polygon_traces(fig):
         # Every hover template should mention at least one layer activation
         assert "L1:" in trace.hovertemplate
 
 
-def test_plot_partition_2d_uses_explicit_domain(simple_partition):
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_partition_2d_uses_explicit_domain(simple_partition, backend):
     from parx.viz import plot_partition_2d
 
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
     domain = ((-1.5, 1.5), (-0.75, 0.75))
-    fig = plot_partition_2d(simple_partition, domain=domain)
+    fig = plot_partition_2d(simple_partition, domain=domain, backend=backend)
 
-    assert tuple(fig.layout.xaxis.range) == domain[0]
-    assert tuple(fig.layout.yaxis.range) == domain[1]
+    if backend == "plotly":
+        assert tuple(fig.layout.xaxis.range) == domain[0]
+        assert tuple(fig.layout.yaxis.range) == domain[1]
+    else:
+        assert tuple(fig.axes[0].get_xlim()) == domain[0]
+        assert tuple(fig.axes[0].get_ylim()) == domain[1]
 
 
-def test_plot_partition_2d_layer_coarsens_regions(two_layer_partition):
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_partition_2d_layer_coarsens_regions(two_layer_partition, backend):
     from parx.viz import plot_partition_2d
+
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
 
     # layer=n_layers (leaf) must match the unfiltered, full-depth partition.
     n_layers = two_layer_partition.n_layers
-    fig_leaf = plot_partition_2d(two_layer_partition, layer=n_layers)
-    fig_all = plot_partition_2d(two_layer_partition)
-    assert len(_polygon_traces(fig_leaf)) == len(_polygon_traces(fig_all))
+    fig_leaf = plot_partition_2d(two_layer_partition, layer=n_layers, backend=backend)
+    fig_all = plot_partition_2d(two_layer_partition, backend=backend)
+    assert _n_regions_drawn(fig_leaf, backend) == _n_regions_drawn(fig_all, backend)
 
     # layer=1 must strictly coarsen: all 3 leaf regions share one layer-1 pattern.
-    fig_l1 = plot_partition_2d(two_layer_partition, layer=1)
-    assert len(_polygon_traces(fig_l1)) < len(_polygon_traces(fig_all))
+    fig_l1 = plot_partition_2d(two_layer_partition, layer=1, backend=backend)
+    assert _n_regions_drawn(fig_l1, backend) < _n_regions_drawn(fig_all, backend)
 
 
 def test_plot_partition_2d_layer_out_of_range(simple_partition):
@@ -135,6 +193,13 @@ def test_plot_partition_2d_rejects_non_2d():
         plot_partition_2d(p)
 
 
+def test_plot_partition_2d_rejects_unknown_backend(simple_partition):
+    from parx.viz import plot_partition_2d
+
+    with pytest.raises(ValueError, match="unknown backend"):
+        plot_partition_2d(simple_partition, backend="bogus")
+
+
 # ── color_by metric ───────────────────────────────────────────────────────────
 
 
@@ -153,6 +218,38 @@ def test_color_by_none_skips_colorbar(simple_partition):
     assert len(_polygon_traces(fig)) == len(simple_partition)
     cbars = [t for t in fig.data if getattr(t.marker, "showscale", False)]
     assert cbars == []
+
+
+def test_color_by_none_skips_colorbar_matplotlib(simple_partition):
+    from parx.viz import plot_partition_2d
+
+    pytest.importorskip("matplotlib")
+    fig = plot_partition_2d(simple_partition, color_by=None, backend="matplotlib")
+    assert len(fig.axes[0].patches) == len(simple_partition)
+    assert len(fig.axes) == 1  # no colorbar axes added
+
+
+def test_color_by_log_color_runs_matplotlib(simple_partition):
+    from parx.viz import affine_frobenius, plot_partition_2d
+
+    pytest.importorskip("matplotlib")
+    fig = plot_partition_2d(
+        simple_partition,
+        color_by=affine_frobenius,
+        log_color=True,
+        backend="matplotlib",
+    )
+    assert len(fig.axes) == 2  # region axes + colorbar axes
+    assert "log10" in fig.axes[1].get_ylabel()
+
+
+def test_plot_partition_2d_colors_matplotlib(simple_partition):
+    from parx.viz import plot_partition_2d, region_palette
+
+    pytest.importorskip("matplotlib")
+    palette = region_palette(simple_partition, scheme="spatial")
+    fig = plot_partition_2d(simple_partition, colors=palette, backend="matplotlib")
+    assert len(fig.axes[0].patches) == len(simple_partition)
 
 
 def test_color_by_metric_appears_in_hover(simple_partition):
@@ -205,15 +302,37 @@ def test_plot_region_counts_bar_length(simple_partition):
     assert ys[-1] == len(simple_partition)
 
 
+def test_plot_region_counts_matplotlib(simple_partition):
+    from parx.viz import plot_region_counts
+
+    pytest.importorskip("matplotlib")
+    fig = plot_region_counts(simple_partition, backend="matplotlib")
+    assert isinstance(fig, _require_mpl_figure())
+    ax = fig.axes[0]
+    bars = ax.patches
+    assert len(bars) == simple_partition.n_layers
+    assert bars[-1].get_height() == len(simple_partition)
+
+
+def test_plot_region_counts_rejects_unknown_backend(simple_partition):
+    from parx.viz import plot_region_counts
+
+    with pytest.raises(ValueError, match="unknown backend"):
+        plot_region_counts(simple_partition, backend="bogus")
+
+
 # ── plot_halfspaces ───────────────────────────────────────────────────────────
 
 
-def test_plot_halfspaces_returns_figure(simple_partition):
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_halfspaces_returns_figure(simple_partition, backend):
     from parx.viz import plot_halfspaces
 
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
     region = simple_partition.regions[0]
-    fig = plot_halfspaces(simple_partition, region)
-    assert isinstance(fig, go.Figure)
+    fig = plot_halfspaces(simple_partition, region, backend=backend)
+    _assert_figure_type(fig, backend)
 
 
 def test_plot_halfspaces_rejects_non_2d():
@@ -226,6 +345,14 @@ def test_plot_halfspaces_rejects_non_2d():
     )
     with pytest.raises(ValueError, match="input_dim=2"):
         plot_halfspaces(p, p.regions[0])
+
+
+def test_plot_halfspaces_rejects_unknown_backend(simple_partition):
+    from parx.viz import plot_halfspaces
+
+    region = simple_partition.regions[0]
+    with pytest.raises(ValueError, match="unknown backend"):
+        plot_halfspaces(simple_partition, region, backend="bogus")
 
 
 # ── Higher-dimensional viz (slice, projection, PCA) ───────────────────────────
@@ -245,36 +372,53 @@ def partition_3d():
     return Partition(regions=regions, weights=[W], biases=[b])
 
 
-def test_plot_partition_slice_returns_figure(partition_3d):
+def _n_patches(fig, backend):
+    """Number of drawn region shapes, regardless of backend."""
+    if backend == "plotly":
+        return len([t for t in fig.data if t.mode == "lines" and t.fill == "toself"])
+    return len(fig.axes[0].patches)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_partition_slice_returns_figure(partition_3d, backend):
     from parx.viz import plot_partition_slice
 
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
     fig = plot_partition_slice(
         partition_3d,
         free_dims=(0, 1),
         fixed_values={2: 0.0},
         x_range=(-2.0, 2.0),
         y_range=(-2.0, 2.0),
+        backend=backend,
     )
-    assert isinstance(fig, go.Figure)
+    _assert_figure_type(fig, backend)
 
 
-def test_plot_partition_slice_has_traces(partition_3d):
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_partition_slice_has_traces(partition_3d, backend):
     from parx.viz import plot_partition_slice
 
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
     fig = plot_partition_slice(
         partition_3d,
         free_dims=(0, 1),
         fixed_values={2: 0.0},
         x_range=(-2.0, 2.0),
         y_range=(-2.0, 2.0),
+        backend=backend,
     )
-    polys = [t for t in fig.data if t.mode == "lines" and t.fill == "toself"]
-    assert len(polys) >= 1
+    assert _n_patches(fig, backend) >= 1
 
 
-def test_plot_partition_slice_color_by_none(partition_3d):
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_partition_slice_color_by_none(partition_3d, backend):
     from parx.viz import plot_partition_slice
 
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
     fig = plot_partition_slice(
         partition_3d,
         free_dims=(0, 1),
@@ -282,49 +426,64 @@ def test_plot_partition_slice_color_by_none(partition_3d):
         color_by=None,
         x_range=(-2.0, 2.0),
         y_range=(-2.0, 2.0),
+        backend=backend,
     )
-    assert isinstance(fig, go.Figure)
-    cbars = [t for t in fig.data if getattr(t.marker, "showscale", False)]
-    assert cbars == []
+    _assert_figure_type(fig, backend)
+    if backend == "plotly":
+        cbars = [t for t in fig.data if getattr(t.marker, "showscale", False)]
+        assert cbars == []
+    else:
+        assert len(fig.axes) == 1  # no colorbar axes added
 
 
-def test_plot_partition_slice_auto_range(partition_3d):
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_partition_slice_auto_range(partition_3d, backend):
     """Omitting x_range/y_range should not raise."""
     from parx.viz import plot_partition_slice
 
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
     fig = plot_partition_slice(
         partition_3d,
         free_dims=(0, 1),
         fixed_values={2: 0.0},
+        backend=backend,
     )
-    assert isinstance(fig, go.Figure)
+    _assert_figure_type(fig, backend)
 
 
-def test_plot_partition_projection_returns_figure(partition_3d):
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_partition_projection_returns_figure(partition_3d, backend):
     from parx.viz import plot_partition_projection
 
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
     proj = np.array([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]])  # (3, 2)
     fig = plot_partition_projection(
         partition_3d,
         proj,
         x_range=(-2.0, 2.0),
         y_range=(-2.0, 2.0),
+        backend=backend,
     )
-    assert isinstance(fig, go.Figure)
+    _assert_figure_type(fig, backend)
 
 
-def test_plot_partition_projection_has_traces(partition_3d):
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_partition_projection_has_traces(partition_3d, backend):
     from parx.viz import plot_partition_projection
 
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
     proj = np.array([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]])
     fig = plot_partition_projection(
         partition_3d,
         proj,
         x_range=(-2.0, 2.0),
         y_range=(-2.0, 2.0),
+        backend=backend,
     )
-    polys = [t for t in fig.data if t.mode == "lines" and t.fill == "toself"]
-    assert len(polys) >= 1
+    assert _n_patches(fig, backend) >= 1
 
 
 def test_plot_partition_projection_wrong_shape(partition_3d):
@@ -335,14 +494,34 @@ def test_plot_partition_projection_wrong_shape(partition_3d):
         plot_partition_projection(partition_3d, bad_proj)
 
 
-def test_plot_partition_pca_returns_figure(partition_3d):
+def test_plot_partition_slice_rejects_unknown_backend(partition_3d):
+    from parx.viz import plot_partition_slice
+
+    with pytest.raises(ValueError, match="unknown backend"):
+        plot_partition_slice(
+            partition_3d, free_dims=(0, 1), fixed_values={2: 0.0}, backend="bogus"
+        )
+
+
+def test_plot_partition_projection_rejects_unknown_backend(partition_3d):
+    from parx.viz import plot_partition_projection
+
+    proj = np.array([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]])
+    with pytest.raises(ValueError, match="unknown backend"):
+        plot_partition_projection(partition_3d, proj, backend="bogus")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_plot_partition_pca_returns_figure(partition_3d, backend):
     pytest.importorskip("sklearn")
     from parx.viz import plot_partition_pca
 
+    if backend == "matplotlib":
+        pytest.importorskip("matplotlib")
     rng = np.random.default_rng(0)
     data = rng.standard_normal((50, 3))
-    fig = plot_partition_pca(partition_3d, data)
-    assert isinstance(fig, go.Figure)
+    fig = plot_partition_pca(partition_3d, data, backend=backend)
+    _assert_figure_type(fig, backend)
 
 
 def test_plot_partition_pca_missing_sklearn(partition_3d, monkeypatch):
@@ -406,6 +585,28 @@ class TestAnimateEpochs:
         fig = animate_epochs(epoch_partitions)
         assert len(fig.layout.updatemenus) == 1
 
+    def test_rejects_unknown_backend(self, epoch_partitions):
+        with pytest.raises(ValueError, match="unknown backend"):
+            animate_epochs(epoch_partitions, backend="bogus")
+
+    def test_matplotlib_returns_funcanimation(self, epoch_partitions):
+        pytest.importorskip("matplotlib")
+        from matplotlib.animation import FuncAnimation
+
+        anim = animate_epochs(epoch_partitions, backend="matplotlib")
+        assert isinstance(anim, FuncAnimation)
+        assert len(list(anim.new_frame_seq())) == 3
+
+    def test_matplotlib_empty_list_raises(self):
+        pytest.importorskip("matplotlib")
+        with pytest.raises(ValueError, match="at least one partition"):
+            animate_epochs([], backend="matplotlib")
+
+    def test_matplotlib_wrong_input_dim(self, partition_3d):
+        pytest.importorskip("matplotlib")
+        with pytest.raises(ValueError, match="input_dim"):
+            animate_epochs([partition_3d], backend="matplotlib")
+
 
 class TestAnimateEpochsVideo:
     def test_gif_output(self, tmp_path, epoch_partitions):
@@ -414,6 +615,19 @@ class TestAnimateEpochsVideo:
         animate_epochs_video(epoch_partitions, out, fps=2, dpi=72)
         assert out.exists()
         assert out.stat().st_size > 0
+
+    def test_matches_animate_epochs_matplotlib_frame_count(
+        self, tmp_path, epoch_partitions
+    ):
+        """Regression check for the animate_epochs_video refactor: both entry
+        points should build the same number of per-frame region patches."""
+        pytest.importorskip("matplotlib")
+        anim = animate_epochs(epoch_partitions, backend="matplotlib")
+        assert len(list(anim.new_frame_seq())) == len(epoch_partitions)
+
+        out = tmp_path / "out.gif"
+        animate_epochs_video(epoch_partitions, out, fps=2, dpi=72)
+        assert out.exists()
 
     def test_wrong_input_dim(self, tmp_path, partition_3d):
         pytest.importorskip("matplotlib")
@@ -465,21 +679,37 @@ def embedding_inputs(simple_partition):
 
 
 class TestPlotFeatureEmbedding:
-    def test_returns_figure_with_default_region_coloring(self, embedding_inputs):
+    @pytest.mark.parametrize("backend", BACKENDS)
+    def test_returns_figure_with_default_region_coloring(
+        self, embedding_inputs, backend
+    ):
         pytest.importorskip("sklearn")
+        if backend == "matplotlib":
+            pytest.importorskip("matplotlib")
         features, partition, X = embedding_inputs
-        fig = plot_feature_embedding(features, partition, X, perplexity=5)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        fig = plot_feature_embedding(
+            features, partition, X, perplexity=5, backend=backend
+        )
+        _assert_figure_type(fig, backend)
+        if backend == "plotly":
+            assert len(fig.data) >= 1
+        else:
+            assert len(fig.axes[0].collections) >= 1
 
-    def test_continuous_color_by_array_adds_colorbar(self, embedding_inputs):
+    @pytest.mark.parametrize("backend", BACKENDS)
+    def test_continuous_color_by_array_adds_colorbar(self, embedding_inputs, backend):
         pytest.importorskip("sklearn")
+        if backend == "matplotlib":
+            pytest.importorskip("matplotlib")
         features, partition, X = embedding_inputs
         values = np.linalg.norm(X, axis=1)
         fig = plot_feature_embedding(
-            features, partition, X, color_by=values, perplexity=5
+            features, partition, X, color_by=values, perplexity=5, backend=backend
         )
-        assert fig.data[0].marker.showscale is True
+        if backend == "plotly":
+            assert fig.data[0].marker.showscale is True
+        else:
+            assert len(fig.axes) == 2  # scatter axes + colorbar axes
 
     def test_umap_method(self, embedding_inputs):
         pytest.importorskip("umap")
@@ -491,3 +721,18 @@ class TestPlotFeatureEmbedding:
         features, partition, X = embedding_inputs
         with pytest.raises(ValueError, match="unknown embedding method"):
             plot_feature_embedding(features, partition, X, method="pca")
+
+    def test_rejects_unknown_backend(self, embedding_inputs):
+        features, partition, X = embedding_inputs
+        with pytest.raises(ValueError, match="unknown backend"):
+            plot_feature_embedding(features, partition, X, backend="bogus")
+
+    def test_matplotlib_with_precomputed_palette(self, embedding_inputs):
+        pytest.importorskip("sklearn")
+        pytest.importorskip("matplotlib")
+        features, partition, X = embedding_inputs
+        palette = region_palette(partition, scheme="spatial")
+        fig = plot_feature_embedding(
+            features, partition, X, color_by=palette, perplexity=5, backend="matplotlib"
+        )
+        assert len(fig.axes[0].collections) >= 1

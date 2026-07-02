@@ -1,8 +1,11 @@
-"""Plotly visualisations for Partition objects."""
+"""Plotly and matplotlib visualisations for Partition objects."""
 
 from __future__ import annotations
 
 import colorsys
+import re
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import plotly.express as px
@@ -10,6 +13,9 @@ import plotly.graph_objects as go
 
 from parx.partition import Partition
 from parx.region import Region
+
+if TYPE_CHECKING:
+    import matplotlib.figure
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -128,6 +134,101 @@ def _region_vertices_2d(
     return pts[np.argsort(angles)]
 
 
+# ── Matplotlib helpers ───────────────────────────────────────────────────────
+#
+# matplotlib is an optional dependency (``pip install 'parx[animate]'``).  These
+# helpers are lazily imported by every ``backend="matplotlib"`` code path below;
+# they mirror the Plotly rendering logic above without sharing code with it, so
+# the default Plotly output stays byte-for-byte unchanged.
+
+_CSS_RGB_RE = re.compile(r"rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)")
+
+
+def _require_matplotlib(caller: str) -> SimpleNamespace:
+    """Lazily import matplotlib, raising a consistent ``ImportError`` if absent."""
+    try:
+        import matplotlib as mpl
+        import matplotlib.cm as mcm
+        import matplotlib.colors as mcolors
+        import matplotlib.patches as mpatches
+        import matplotlib.pyplot as plt
+        from matplotlib.animation import FuncAnimation
+    except ImportError as e:
+        raise ImportError(
+            f"{caller} requires matplotlib: pip install 'parx[animate]'"
+        ) from e
+    return SimpleNamespace(
+        mpl=mpl,
+        mcm=mcm,
+        mcolors=mcolors,
+        mpatches=mpatches,
+        plt=plt,
+        FuncAnimation=FuncAnimation,
+    )
+
+
+def _css_rgb_to_mpl(css: str) -> tuple[float, float, float]:
+    """Convert a CSS color string to a 0–1 matplotlib RGB tuple.
+
+    Supports Plotly-style ``"rgb(r,g,b)"`` strings as well as hex and named colors.
+    """
+    m = _CSS_RGB_RE.fullmatch(css.strip())
+    if m:
+        r, g, b = (int(v) / 255.0 for v in m.groups())
+        return (r, g, b)
+
+    # Fallback for other CSS-like formats (e.g. "#ff0000", "tab:blue").
+    import matplotlib.colors as mcolors
+
+    try:
+        return mcolors.to_rgb(css)
+    except ValueError as e:
+        raise ValueError(f"cannot parse CSS color {css!r}") from e
+
+
+def _mpl_resolve_colors(
+    ns: SimpleNamespace,
+    plot_regions: list[Region],
+    partition: Partition,
+    color_by,
+    log_color: bool,
+    colorscale: str,
+    colors: list[str] | None = None,
+):
+    """Matplotlib analogue of the color-resolution logic used by the Plotly paths.
+
+    Returns ``(facecolors, cmap, norm, metrics, label_str)``.  ``cmap``/``norm``/
+    ``metrics``/``label_str`` are ``None`` unless a ``color_by`` metric was used
+    (i.e. no colorbar is needed for precomputed ``colors`` or the discrete
+    Turbo-style palette).
+    """
+    n = len(plot_regions)
+    if colors is not None:
+        facecolors = [_css_rgb_to_mpl(c) for c in colors]
+        return facecolors, None, None, None, None
+    if color_by is None:
+        cmap = ns.mpl.colormaps["turbo"]
+        facecolors = [cmap(i / max(n - 1, 1)) for i in range(n)]
+        return facecolors, None, None, None, None
+
+    metrics = np.array([color_by(partition, r) for r in plot_regions], dtype=float)
+    scaled = np.log10(np.maximum(metrics, 1e-12)) if log_color else metrics
+    m_min, m_max = float(scaled.min()), float(scaled.max())
+    if m_max - m_min < 1e-12:
+        m_max = m_min + 1e-12
+    norm = ns.mcolors.Normalize(vmin=m_min, vmax=m_max)
+    try:
+        cmap = ns.mpl.colormaps[colorscale.lower()]
+    except KeyError as e:
+        raise ValueError(
+            f"unknown colorscale {colorscale!r} for matplotlib backend; "
+            "choose a matplotlib colormap name"
+        ) from e
+    facecolors = [cmap(norm(v)) for v in scaled]
+    label_str = getattr(color_by, "__name__", "metric")
+    return facecolors, cmap, norm, metrics, label_str
+
+
 # ── Color-by-metric helpers ──────────────────────────────────────────────────
 #
 # Each helper has signature ``(partition, region) -> float`` so it can be passed
@@ -190,6 +291,10 @@ def region_palette(partition: Partition, scheme: str = "random") -> list[str]:
         ``'frobenius'`` — Viridis palette ordered by ``‖A‖_F``.
         ``'spatial'`` — HSV colour keyed to centroid angle (hue) and
         radial distance from the mean centroid (saturation).
+
+    Returned CSS strings work as the ``colors=`` argument of
+    :func:`plot_partition_2d` under either ``backend`` — the matplotlib path
+    converts them internally.
     """
     regions = partition.regions
     n = len(regions)
@@ -210,6 +315,58 @@ def region_palette(partition: Partition, scheme: str = "random") -> list[str]:
     )
 
 
+def _plot_partition_2d_matplotlib(
+    plot_regions: list[Region],
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    partition: Partition,
+    layer: int | None,
+    color_by,
+    color_label: str | None,
+    log_color: bool,
+    colorscale: str,
+    colors: list[str] | None,
+) -> matplotlib.figure.Figure:
+    """Matplotlib rendering path for :func:`plot_partition_2d` — no hover text."""
+    ns = _require_matplotlib("plot_partition_2d")
+    n = len(plot_regions)
+    facecolors, cmap, norm, metrics, auto_label = _mpl_resolve_colors(
+        ns, plot_regions, partition, color_by, log_color, colorscale, colors
+    )
+
+    fig, ax = ns.plt.subplots(figsize=(6.2, 5.0) if metrics is not None else (5.2, 5.0))
+    for i, region in enumerate(plot_regions):
+        D, g = partition.halfspaces(region)
+        verts = _region_vertices_2d(D, g, x_range, y_range)
+        if verts is None:
+            continue
+        patch = ns.mpatches.Polygon(
+            verts,
+            closed=True,
+            facecolor=facecolors[i],
+            edgecolor="black",
+            linewidth=0.8,
+            alpha=0.75,
+        )
+        ax.add_patch(patch)
+
+    if metrics is not None:
+        sm = ns.mcm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        label_str = color_label or auto_label
+        cb_label = label_str + (" (log10)" if log_color else "")
+        fig.colorbar(sm, ax=ax, label=cb_label, fraction=0.046, pad=0.04)
+
+    ax.set_xlim(x_range)
+    ax.set_ylim(y_range)
+    ax.set_aspect("equal")
+    ax.set_xlabel("x₁")
+    ax.set_ylabel("x₂")
+    depth_str = f"layer {layer}" if layer is not None else "all layers"
+    ax.set_title(f"Linear regions — {depth_str}  ({n} regions)")
+    return fig
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
@@ -226,7 +383,8 @@ def plot_partition_2d(
     log_color: bool = False,
     colorscale: str = "Viridis",
     colors: list[str] | None = None,
-) -> go.Figure:
+    backend: Literal["plotly", "matplotlib"] = "plotly",
+) -> go.Figure | matplotlib.figure.Figure:
     """Draw each linear region as a filled, crisp polygon.
 
     Each region is rendered as a vector-quality ``go.Scatter`` polygon, giving
@@ -273,11 +431,20 @@ def plot_partition_2d(
         When provided, ``color_by``, ``colorscale``, and ``log_color`` are
         ignored and no colourbar is shown.  Use :func:`region_palette` to
         generate a matching list.
+    backend : 'plotly' or 'matplotlib'
+        ``'plotly'`` (default) returns an interactive ``go.Figure`` with hover
+        tooltips.  ``'matplotlib'`` returns a static ``matplotlib.figure.Figure``
+        (no hover text) and requires ``pip install 'parx[animate]'``.
 
     Returns
     -------
-    go.Figure
+    go.Figure or matplotlib.figure.Figure
     """
+    if backend not in ("plotly", "matplotlib"):
+        raise ValueError(
+            f"unknown backend {backend!r}; choose 'plotly' or 'matplotlib'"
+        )
+
     if partition.input_dim != 2:
         raise ValueError(
             f"plot_partition_2d requires input_dim=2, got {partition.input_dim}"
@@ -293,8 +460,7 @@ def plot_partition_2d(
         seen: dict[tuple[bytes, ...], Region] = {}
         for r in partition.regions:
             key = tuple(
-                r.activation_path[layer_idx].tobytes()
-                for layer_idx in range(layer)
+                r.activation_path[layer_idx].tobytes() for layer_idx in range(layer)
             )
             if key not in seen:
                 seen[key] = Region(
@@ -307,6 +473,9 @@ def plot_partition_2d(
 
     n = len(plot_regions)
     if n == 0:
+        if backend == "matplotlib":
+            ns = _require_matplotlib("plot_partition_2d")
+            return ns.plt.figure()
         return go.Figure()
 
     if domain is not None:
@@ -315,6 +484,20 @@ def plot_partition_2d(
         auto_x, auto_y = _auto_range_2d(partition, pad=pad)
         x_range = x_range or auto_x
         y_range = y_range or auto_y
+
+    if backend == "matplotlib":
+        return _plot_partition_2d_matplotlib(
+            plot_regions,
+            x_range,
+            y_range,
+            partition,
+            layer,
+            color_by,
+            color_label,
+            log_color,
+            colorscale,
+            colors,
+        )
 
     if colors is not None:
         # Pre-computed palette: bypass color_by entirely, no colourbar.
@@ -411,34 +594,59 @@ def plot_partition_2d(
     return fig
 
 
-def plot_region_counts(partition: Partition) -> go.Figure:
+def plot_region_counts(
+    partition: Partition,
+    *,
+    backend: Literal["plotly", "matplotlib"] = "plotly",
+) -> go.Figure | matplotlib.figure.Figure:
     """Bar chart of distinct region count at each depth.
 
     At depth ``d``, counts the number of unique activation-path prefixes of
     length ``d`` across all leaf regions.  Shows how partition complexity grows
     layer by layer.
 
+    Parameters
+    ----------
+    partition : Partition
+    backend : 'plotly' or 'matplotlib'
+        ``'plotly'`` (default) returns a ``go.Figure``; ``'matplotlib'`` returns
+        a ``matplotlib.figure.Figure`` and requires ``pip install 'parx[animate]'``.
+
     Returns
     -------
-    go.Figure
+    go.Figure or matplotlib.figure.Figure
     """
+    if backend not in ("plotly", "matplotlib"):
+        raise ValueError(
+            f"unknown backend {backend!r}; choose 'plotly' or 'matplotlib'"
+        )
+
     depths = list(range(1, partition.n_layers + 1))
     counts = []
     for d in depths:
         prefixes = {
-            tuple(
-                r.activation_path[layer_idx].tobytes()
-                for layer_idx in range(d)
-            )
+            tuple(r.activation_path[layer_idx].tobytes() for layer_idx in range(d))
             for r in partition.regions
         }
         counts.append(len(prefixes))
+
+    title = f"Region complexity by depth  (leaf total: {len(partition)})"
+
+    if backend == "matplotlib":
+        ns = _require_matplotlib("plot_region_counts")
+        fig, ax = ns.plt.subplots(figsize=(5.2, 4.0))
+        ax.bar(depths, counts, color="steelblue")
+        ax.set_xlabel("Layer depth")
+        ax.set_ylabel("Distinct regions")
+        ax.set_xticks(depths)
+        ax.set_title(title)
+        return fig
 
     fig = go.Figure(go.Bar(x=depths, y=counts, marker_color="steelblue"))
     fig.update_layout(
         xaxis=dict(title="Layer depth", tickmode="linear", dtick=1),
         yaxis_title="Distinct regions",
-        title=f"Region complexity by depth  (leaf total: {len(partition)})",
+        title=title,
     )
     return fig
 
@@ -525,9 +733,7 @@ def _build_colored_figure(
         m_min = m_max = None
         label_str = None
     else:
-        metrics = np.array(
-            [color_by(partition, r) for r in plot_regions], dtype=float
-        )
+        metrics = np.array([color_by(partition, r) for r in plot_regions], dtype=float)
         if log_color:
             scaled = np.log10(np.maximum(metrics, 1e-12))
         else:
@@ -601,14 +807,61 @@ def _build_colored_figure(
     return fig
 
 
+def _build_colored_figure_matplotlib(
+    plot_regions: list,
+    systems_2d: list[tuple[np.ndarray, np.ndarray]],
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    partition,
+    color_by,
+    color_label: str | None,
+    log_color: bool,
+    colorscale: str,
+    title: str,
+) -> matplotlib.figure.Figure:
+    """Matplotlib twin of :func:`_build_colored_figure` — no hover text."""
+    ns = _require_matplotlib("plot_partition_slice/plot_partition_projection")
+    facecolors, cmap, norm, metrics, auto_label = _mpl_resolve_colors(
+        ns, plot_regions, partition, color_by, log_color, colorscale, colors=None
+    )
+
+    fig, ax = ns.plt.subplots(figsize=(6.2, 5.0) if metrics is not None else (5.2, 5.0))
+    for i, (D_2d, g_2d) in enumerate(systems_2d):
+        verts = _region_vertices_2d(D_2d, g_2d, x_range, y_range)
+        if verts is None:
+            continue
+        patch = ns.mpatches.Polygon(
+            verts,
+            closed=True,
+            facecolor=facecolors[i],
+            edgecolor="black",
+            linewidth=0.8,
+            alpha=0.75,
+        )
+        ax.add_patch(patch)
+
+    if metrics is not None:
+        sm = ns.mcm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        label_str = color_label or auto_label
+        cb_label = label_str + (" (log10)" if log_color else "")
+        fig.colorbar(sm, ax=ax, label=cb_label, fraction=0.046, pad=0.04)
+
+    ax.set_xlim(x_range)
+    ax.set_ylim(y_range)
+    ax.set_aspect("equal")
+    ax.set_xlabel("x₁")
+    ax.set_ylabel("x₂")
+    ax.set_title(title)
+    return fig
+
+
 def _global_range(
     partitions: list,
     pad: float,
 ) -> tuple[tuple[float, float], tuple[float, float]]:
     systems = [
-        partition.halfspaces(r)
-        for partition in partitions
-        for r in partition.regions
+        partition.halfspaces(r) for partition in partitions for r in partition.regions
     ]
     return _auto_range_2d_from_systems(systems, pad)
 
@@ -637,7 +890,8 @@ def plot_partition_slice(
     color_label: str | None = None,
     log_color: bool = False,
     colorscale: str = "Viridis",
-) -> go.Figure:
+    backend: Literal["plotly", "matplotlib"] = "plotly",
+) -> go.Figure | matplotlib.figure.Figure:
     """Draw an axis-aligned 2D slice through a higher-dimensional partition.
 
     Fixes all input dimensions except ``free_dims[0]`` and ``free_dims[1]``
@@ -668,11 +922,19 @@ def plot_partition_slice(
         If ``True``, colour values are mapped via ``log10``.
     colorscale : str
         Any Plotly colorscale name (default ``"Viridis"``).
+    backend : 'plotly' or 'matplotlib'
+        ``'plotly'`` (default) returns a ``go.Figure``; ``'matplotlib'`` returns
+        a ``matplotlib.figure.Figure`` and requires ``pip install 'parx[animate]'``.
 
     Returns
     -------
-    go.Figure
+    go.Figure or matplotlib.figure.Figure
     """
+    if backend not in ("plotly", "matplotlib"):
+        raise ValueError(
+            f"unknown backend {backend!r}; choose 'plotly' or 'matplotlib'"
+        )
+
     free0, free1 = free_dims
     fixed_dims = [d for d in range(partition.input_dim) if d not in free_dims]
     fixed_vals = np.array([fixed_values[d] for d in fixed_dims])
@@ -687,6 +949,9 @@ def plot_partition_slice(
         plot_regions.append(region)
 
     if not plot_regions:
+        if backend == "matplotlib":
+            ns = _require_matplotlib("plot_partition_slice")
+            return ns.plt.figure()
         return go.Figure()
 
     if x_range is None or y_range is None:
@@ -705,7 +970,12 @@ def plot_partition_slice(
         f"  ({n_visible} visible regions)"
     )
 
-    return _build_colored_figure(
+    builder = (
+        _build_colored_figure_matplotlib
+        if backend == "matplotlib"
+        else _build_colored_figure
+    )
+    return builder(
         plot_regions,
         systems_2d,
         x_range,
@@ -730,7 +1000,8 @@ def plot_partition_projection(
     color_label: str | None = None,
     log_color: bool = False,
     colorscale: str = "Viridis",
-) -> go.Figure:
+    backend: Literal["plotly", "matplotlib"] = "plotly",
+) -> go.Figure | matplotlib.figure.Figure:
     """Draw an approximate 2D projection of a higher-dimensional partition.
 
     Projects each region's halfspace normals onto a 2D subspace defined by
@@ -772,11 +1043,19 @@ def plot_partition_projection(
         If ``True``, colour values are mapped via ``log10``.
     colorscale : str
         Any Plotly colorscale name (default ``"Viridis"``).
+    backend : 'plotly' or 'matplotlib'
+        ``'plotly'`` (default) returns a ``go.Figure``; ``'matplotlib'`` returns
+        a ``matplotlib.figure.Figure`` and requires ``pip install 'parx[animate]'``.
 
     Returns
     -------
-    go.Figure
+    go.Figure or matplotlib.figure.Figure
     """
+    if backend not in ("plotly", "matplotlib"):
+        raise ValueError(
+            f"unknown backend {backend!r}; choose 'plotly' or 'matplotlib'"
+        )
+
     projection = np.asarray(projection, dtype=float)
     if projection.shape != (partition.input_dim, 2):
         raise ValueError(
@@ -792,6 +1071,9 @@ def plot_partition_projection(
         systems_2d.append((D_proj, g))
 
     if not plot_regions:
+        if backend == "matplotlib":
+            ns = _require_matplotlib("plot_partition_projection")
+            return ns.plt.figure()
         return go.Figure()
 
     if x_range is None or y_range is None:
@@ -802,7 +1084,12 @@ def plot_partition_projection(
     n = len(plot_regions)
     title = f"Partition projection (approx.)  ({n} regions)"
 
-    return _build_colored_figure(
+    builder = (
+        _build_colored_figure_matplotlib
+        if backend == "matplotlib"
+        else _build_colored_figure
+    )
+    return builder(
         plot_regions,
         systems_2d,
         x_range,
@@ -824,7 +1111,8 @@ def plot_partition_pca(
     color_label: str | None = None,
     log_color: bool = False,
     colorscale: str = "Viridis",
-) -> go.Figure:
+    backend: Literal["plotly", "matplotlib"] = "plotly",
+) -> go.Figure | matplotlib.figure.Figure:
     """Draw an approximate 2D PCA projection of a higher-dimensional partition.
 
     Fits a 2-component PCA on ``data``, uses the principal-component axes as
@@ -849,10 +1137,13 @@ def plot_partition_pca(
         If ``True``, colour values are mapped via ``log10``.
     colorscale : str
         Any Plotly colorscale name (default ``"Viridis"``).
+    backend : 'plotly' or 'matplotlib'
+        ``'plotly'`` (default) returns a ``go.Figure``; ``'matplotlib'`` returns
+        a ``matplotlib.figure.Figure`` and requires ``pip install 'parx[animate]'``.
 
     Returns
     -------
-    go.Figure
+    go.Figure or matplotlib.figure.Figure
 
     Raises
     ------
@@ -877,7 +1168,48 @@ def plot_partition_pca(
         color_label=color_label,
         log_color=log_color,
         colorscale=colorscale,
+        backend=backend,
     )
+
+
+def _plot_halfspaces_matplotlib(
+    D: np.ndarray,
+    g: np.ndarray,
+    region: Region,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    xs: np.ndarray,
+) -> matplotlib.figure.Figure:
+    """Matplotlib rendering path for :func:`plot_halfspaces`."""
+    ns = _require_matplotlib("plot_halfspaces")
+    fig, ax = ns.plt.subplots(figsize=(5.2, 5.0))
+
+    for i in range(D.shape[0]):
+        d0, d1 = D[i, 0], D[i, 1]
+        gi = g[i]
+        if abs(d1) > 1e-10:
+            y_line = (gi - d0 * xs) / d1
+            mask = (y_line >= y_range[0]) & (y_line <= y_range[1])
+            if mask.any():
+                ax.plot(xs[mask], y_line[mask], color=(0.31, 0.31, 0.31, 0.45), lw=1)
+        elif abs(d0) > 1e-10:
+            x_val = gi / d0
+            if x_range[0] <= x_val <= x_range[1]:
+                ax.plot(
+                    [x_val, x_val], list(y_range), color=(0.31, 0.31, 0.31, 0.45), lw=1
+                )
+
+    c = region.centroid
+    if x_range[0] <= c[0] <= x_range[1] and y_range[0] <= c[1] <= y_range[1]:
+        ax.scatter([c[0]], [c[1]], s=80, color="crimson", marker="x", label="centroid")
+        ax.legend()
+
+    ax.set_xlim(x_range)
+    ax.set_ylim(y_range)
+    ax.set_xlabel("x₁")
+    ax.set_ylabel("x₂")
+    ax.set_title(f"Halfspaces for region  ({D.shape[0]} constraints)")
+    return fig
 
 
 def plot_halfspaces(
@@ -885,7 +1217,9 @@ def plot_halfspaces(
     region: Region,
     x_range: tuple[float, float] = (-2.0, 2.0),
     y_range: tuple[float, float] = (-2.0, 2.0),
-) -> go.Figure:
+    *,
+    backend: Literal["plotly", "matplotlib"] = "plotly",
+) -> go.Figure | matplotlib.figure.Figure:
     """Draw the halfspace boundaries that define a single region.
 
     For each row ``D[i,:] x = g[i]`` of the region's constraint system, draws
@@ -899,11 +1233,19 @@ def plot_halfspaces(
         The region whose halfspace boundaries to draw.
     x_range, y_range : (float, float)
         Axis extents.
+    backend : 'plotly' or 'matplotlib'
+        ``'plotly'`` (default) returns a ``go.Figure``; ``'matplotlib'`` returns
+        a ``matplotlib.figure.Figure`` and requires ``pip install 'parx[animate]'``.
 
     Returns
     -------
-    go.Figure
+    go.Figure or matplotlib.figure.Figure
     """
+    if backend not in ("plotly", "matplotlib"):
+        raise ValueError(
+            f"unknown backend {backend!r}; choose 'plotly' or 'matplotlib'"
+        )
+
     if partition.input_dim != 2:
         raise ValueError(
             f"plot_halfspaces requires input_dim=2, got {partition.input_dim}"
@@ -911,6 +1253,9 @@ def plot_halfspaces(
 
     D, g = partition.halfspaces(region)
     xs = np.linspace(x_range[0], x_range[1], 400)
+
+    if backend == "matplotlib":
+        return _plot_halfspaces_matplotlib(D, g, region, x_range, y_range, xs)
 
     fig = go.Figure()
 
@@ -963,6 +1308,98 @@ def plot_halfspaces(
     return fig
 
 
+def _animate_epochs_matplotlib(
+    caller: str,
+    partitions: list[Partition],
+    labels: list[str],
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    color_by,
+    color_label: str | None,
+    log_color: bool,
+    colorscale: str,
+    frame_duration: int,
+    figsize: tuple[float, float],
+):
+    """Build the shared matplotlib ``FuncAnimation`` behind :func:`animate_epochs`
+    (``backend='matplotlib'``) and :func:`animate_epochs_video`.
+
+    Returns ``(anim, fig)`` — callers that only need playback (``animate_epochs``)
+    return ``anim`` alone; ``animate_epochs_video`` also needs ``fig`` to close it
+    after saving.
+    """
+    ns = _require_matplotlib(caller)
+    mpl_cmap = ns.mpl.colormaps[colorscale.lower()]
+
+    if color_by is not None:
+        m_min, m_max = _global_metric_range(partitions, color_by, log_color)
+        norm = ns.mcolors.Normalize(vmin=m_min, vmax=m_max)
+        label_str = color_label or getattr(color_by, "__name__", "metric")
+    else:
+        norm = None
+        label_str = None
+
+    fig, ax = ns.plt.subplots(figsize=figsize)
+    ax.set_xlim(x_range)
+    ax.set_ylim(y_range)
+    ax.set_aspect("equal")
+    ax.set_xlabel("x₁")
+    ax.set_ylabel("x₂")
+
+    if norm is not None:
+        sm = ns.mcm.ScalarMappable(cmap=mpl_cmap, norm=norm)
+        sm.set_array([])
+        cb_label = label_str + (" (log10)" if log_color else "")
+        fig.colorbar(sm, ax=ax, label=cb_label, fraction=0.046, pad=0.04)
+
+    def _draw_frame(frame_idx: int):
+        for patch in list(ax.patches):
+            patch.remove()
+        partition = partitions[frame_idx]
+        ax.set_title(f"Epoch {labels[frame_idx]}  ({len(partition)} regions)")
+
+        if color_by is not None:
+            raw = np.array(
+                [color_by(partition, r) for r in partition.regions], dtype=float
+            )
+            scaled = np.log10(np.maximum(raw, 1e-12)) if log_color else raw
+        else:
+            scaled = None
+
+        for i, region in enumerate(partition.regions):
+            D, g = partition.halfspaces(region)
+            verts = _region_vertices_2d(D, g, x_range, y_range)
+            if verts is None:
+                continue
+
+            if norm is not None and scaled is not None:
+                color = mpl_cmap(norm(scaled[i]))
+            else:
+                n = len(partition.regions)
+                color = mpl_cmap(i / max(n - 1, 1))
+
+            patch = ns.mpatches.Polygon(
+                verts,
+                closed=True,
+                facecolor=color,
+                edgecolor="black",
+                linewidth=0.6,
+                alpha=0.75,
+            )
+            ax.add_patch(patch)
+
+    _draw_frame(0)
+
+    anim = ns.FuncAnimation(
+        fig,
+        _draw_frame,
+        frames=len(partitions),
+        interval=frame_duration,
+        blit=False,
+    )
+    return anim, fig
+
+
 def animate_epochs(
     partitions: list[Partition],
     *,
@@ -975,8 +1412,10 @@ def animate_epochs(
     log_color: bool = False,
     colorscale: str = "Viridis",
     frame_duration: int = 500,
-) -> go.Figure:
-    """Plotly figure with one frame per epoch, a play/pause button, and a slider.
+    backend: Literal["plotly", "matplotlib"] = "plotly",
+    figsize: tuple[float, float] = (6.0, 5.0),
+):
+    """One frame per epoch, animated over the training/optimisation trajectory.
 
     All frames share a fixed color scale and spatial range so that changes
     across epochs are visually comparable.  Each partition in ``partitions``
@@ -1003,13 +1442,31 @@ def animate_epochs(
     colorscale : str
         Any Plotly colorscale name.
     frame_duration : int
-        Milliseconds each frame is shown during playback.
+        Milliseconds each frame is shown during playback (Plotly play/pause
+        speed, or the matplotlib ``FuncAnimation`` frame interval).
+    backend : 'plotly' or 'matplotlib'
+        ``'plotly'`` (default) returns a ``go.Figure`` with an interactive
+        play/pause button and slider.  ``'matplotlib'`` returns a
+        ``matplotlib.animation.FuncAnimation`` instead — matplotlib has no
+        native slider widget, so playback is via ``.to_jshtml()`` in a
+        notebook or by saving to a file (see :func:`animate_epochs_video`).
+        Requires ``pip install 'parx[animate]'``.
+    figsize : (float, float)
+        Matplotlib figure size in inches.  Only used when
+        ``backend='matplotlib'``.
 
     Returns
     -------
-    go.Figure
+    go.Figure or matplotlib.animation.FuncAnimation
     """
+    if backend not in ("plotly", "matplotlib"):
+        raise ValueError(
+            f"unknown backend {backend!r}; choose 'plotly' or 'matplotlib'"
+        )
+
     if not partitions:
+        if backend == "matplotlib":
+            raise ValueError("animate_epochs requires at least one partition")
         return go.Figure()
     if any(p.input_dim != 2 for p in partitions):
         raise ValueError(
@@ -1024,6 +1481,22 @@ def animate_epochs(
         auto_x, auto_y = _global_range(partitions, pad)
         x_range = x_range or auto_x
         y_range = y_range or auto_y
+
+    if backend == "matplotlib":
+        anim, _fig = _animate_epochs_matplotlib(
+            "animate_epochs",
+            partitions,
+            labels,
+            x_range,
+            y_range,
+            color_by,
+            color_label,
+            log_color,
+            colorscale,
+            frame_duration,
+            figsize,
+        )
+        return anim
 
     if color_by is not None:
         m_min, m_max = _global_metric_range(partitions, color_by, log_color)
@@ -1261,17 +1734,7 @@ def animate_epochs_video(
     ImportError
         If ``matplotlib`` is not installed.
     """
-    try:
-        import matplotlib as _mpl
-        import matplotlib.cm as mcm
-        import matplotlib.colors as mcolors
-        import matplotlib.patches as mpatches
-        import matplotlib.pyplot as plt
-        from matplotlib.animation import FuncAnimation
-    except ImportError as e:
-        raise ImportError(
-            "animate_epochs_video requires matplotlib: pip install 'parx[animate]'"
-        ) from e
+    ns = _require_matplotlib("animate_epochs_video")
 
     if not partitions:
         return
@@ -1281,6 +1744,7 @@ def animate_epochs_video(
         )
 
     import os
+
     path = os.fspath(path)
     labels = epoch_labels or [str(i) for i in range(len(partitions))]
     if len(labels) != len(partitions):
@@ -1291,74 +1755,18 @@ def animate_epochs_video(
         x_range = x_range or auto_x
         y_range = y_range or auto_y
 
-    mpl_cmap = _mpl.colormaps[colorscale.lower()]
-
-    if color_by is not None:
-        m_min, m_max = _global_metric_range(partitions, color_by, log_color)
-        norm = mcolors.Normalize(vmin=m_min, vmax=m_max)
-        label_str = color_label or getattr(color_by, "__name__", "metric")
-    else:
-        m_min = m_max = None
-        norm = None
-        label_str = None
-
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.set_xlim(x_range)
-    ax.set_ylim(y_range)
-    ax.set_aspect("equal")
-    ax.set_xlabel("x₁")
-    ax.set_ylabel("x₂")
-
-    if norm is not None:
-        sm = mcm.ScalarMappable(cmap=mpl_cmap, norm=norm)
-        sm.set_array([])
-        cb_label = label_str + (" (log10)" if log_color else "")
-        fig.colorbar(sm, ax=ax, label=cb_label, fraction=0.046, pad=0.04)
-
-    def _draw_frame(frame_idx: int):
-        for patch in list(ax.patches):
-            patch.remove()
-        partition = partitions[frame_idx]
-        ax.set_title(f"Epoch {labels[frame_idx]}  ({len(partition)} regions)")
-
-        if color_by is not None:
-            raw = np.array(
-                [color_by(partition, r) for r in partition.regions], dtype=float
-            )
-            scaled = np.log10(np.maximum(raw, 1e-12)) if log_color else raw
-        else:
-            raw = scaled = None
-
-        for i, region in enumerate(partition.regions):
-            D, g = partition.halfspaces(region)
-            verts = _region_vertices_2d(D, g, x_range, y_range)
-            if verts is None:
-                continue
-
-            if norm is not None and scaled is not None:
-                color = mpl_cmap(norm(scaled[i]))
-            else:
-                n = len(partition.regions)
-                color = mpl_cmap(i / max(n - 1, 1))
-
-            patch = mpatches.Polygon(
-                verts,
-                closed=True,
-                facecolor=color,
-                edgecolor="black",
-                linewidth=0.6,
-                alpha=0.75,
-            )
-            ax.add_patch(patch)
-
-    _draw_frame(0)
-
-    anim = FuncAnimation(
-        fig,
-        _draw_frame,
-        frames=len(partitions),
-        interval=1000 // fps,
-        blit=False,
+    anim, fig = _animate_epochs_matplotlib(
+        "animate_epochs_video",
+        partitions,
+        labels,
+        x_range,
+        y_range,
+        color_by,
+        color_label,
+        log_color,
+        colorscale,
+        1000 // fps,
+        figsize,
     )
 
     suffix = os.path.splitext(path)[-1].lower()
@@ -1369,7 +1777,7 @@ def animate_epochs_video(
     else:
         anim.save(path, fps=fps, dpi=dpi)
 
-    plt.close(fig)
+    ns.plt.close(fig)
 
 
 # ── Feature embedding ──────────────────────────────────────────────────────────
@@ -1397,6 +1805,65 @@ def _compute_embedding(features: np.ndarray, method: str, **kwargs) -> np.ndarra
         )
 
 
+def _plot_feature_embedding_matplotlib(
+    emb: np.ndarray,
+    region_ids: np.ndarray,
+    partition: Partition,
+    method: str,
+    color_by,
+    title: str | None,
+) -> matplotlib.figure.Figure:
+    """Matplotlib rendering path for :func:`plot_feature_embedding` — no hover text."""
+    ns = _require_matplotlib("plot_feature_embedding")
+    fig, ax = ns.plt.subplots(figsize=(6.0, 5.2))
+
+    is_region_palette = isinstance(color_by, list) or (
+        isinstance(color_by, str) and color_by == "region"
+    )
+    if is_region_palette:
+        n_regions = len(partition.regions)
+        routed_mask = region_ids >= 0
+        unrouted_mask = ~routed_mask
+        routed_indices = np.where(routed_mask)[0]
+
+        if isinstance(color_by, list):
+            color_list = [
+                _css_rgb_to_mpl(color_by[region_ids[i]]) for i in routed_indices
+            ]
+        else:
+            cmap = ns.mpl.colormaps["turbo"]
+            color_list = [
+                cmap(region_ids[i] / max(n_regions - 1, 1)) for i in routed_indices
+            ]
+
+        if routed_mask.any():
+            ax.scatter(
+                emb[routed_mask, 0], emb[routed_mask, 1], c=color_list, s=16, alpha=0.7
+            )
+        if unrouted_mask.any():
+            ax.scatter(
+                emb[unrouted_mask, 0],
+                emb[unrouted_mask, 1],
+                c="lightgrey",
+                s=20,
+                marker="x",
+                alpha=0.7,
+            )
+    else:
+        color_vals = np.asarray(color_by, dtype=float)
+        sc = ax.scatter(
+            emb[:, 0], emb[:, 1], c=color_vals, cmap="viridis", s=16, alpha=0.7
+        )
+        fig.colorbar(sc, ax=ax)
+
+    ax.set_xlabel(f"{method.upper()} 1")
+    ax.set_ylabel(f"{method.upper()} 2")
+    ax.set_title(
+        title or f"Feature embedding ({method.upper()}, {len(partition)} regions)"
+    )
+    return fig
+
+
 def plot_feature_embedding(
     features: np.ndarray,
     partition: Partition,
@@ -1405,8 +1872,9 @@ def plot_feature_embedding(
     method: str = "tsne",
     color_by="region",
     title: str | None = None,
+    backend: Literal["plotly", "matplotlib"] = "plotly",
     **embed_kwargs,
-) -> go.Figure:
+) -> go.Figure | matplotlib.figure.Figure:
     """Scatter the 2D embedding of penultimate-layer features, coloured by region.
 
     Parameters
@@ -1424,9 +1892,18 @@ def plot_feature_embedding(
         array colours continuously by scalar value (Viridis + colorbar).
     title : str or None
         Figure title; defaults to embedding method and region count.
+    backend : 'plotly' or 'matplotlib'
+        ``'plotly'`` (default) returns a ``go.Figure``; ``'matplotlib'`` returns
+        a ``matplotlib.figure.Figure`` (no hover text) and requires
+        ``pip install 'parx[animate]'``.
     **embed_kwargs
         Forwarded to :func:`_compute_embedding`.
     """
+    if backend not in ("plotly", "matplotlib"):
+        raise ValueError(
+            f"unknown backend {backend!r}; choose 'plotly' or 'matplotlib'"
+        )
+
     emb = _compute_embedding(np.asarray(features, dtype=float), method, **embed_kwargs)
 
     routed = partition.route(X)
@@ -1443,6 +1920,11 @@ def plot_feature_embedding(
         ],
         dtype=int,
     )
+
+    if backend == "matplotlib":
+        return _plot_feature_embedding_matplotlib(
+            emb, region_ids, partition, method, color_by, title
+        )
 
     fig = go.Figure()
 
