@@ -313,8 +313,8 @@ class TestRegionVolumeEstimate:
         """A region defined by [0,1]^2 should have volume ≈ 1.0."""
         p = _unit_square_partition()
         region = p.regions[0]
-        vol = region_volume_estimate(p, region, n_samples=50_000, seed=0)
-        assert vol == pytest.approx(1.0, abs=0.05)
+        vol = region_volume_estimate(p, region, n_samples=5_000, seed=0)
+        assert vol == pytest.approx(1.0, abs=0.02)
 
     def test_reproducible_with_seed(self):
         p = _quadrant_partition()
