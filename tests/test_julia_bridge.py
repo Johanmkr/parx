@@ -315,3 +315,12 @@ def test_compute_partition_halfspaces():
         D, g = partition.halfspaces(region)
         slack = g - D @ region.centroid
         assert np.all(slack >= -1e-9), "centroid must satisfy D*x <= g"
+
+
+def test_precompile_returns_timing_dict():
+    import parx
+
+    timings = parx.precompile()
+
+    assert set(timings) == {"sparse_julia", "exact_julia", "exact_julia_fast"}
+    assert all(v >= 0.0 for v in timings.values())
