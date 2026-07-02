@@ -578,6 +578,7 @@ def plot_partition_2d(
 
 def plot_region_counts(
     partition: Partition,
+    *,
     backend: Literal["plotly", "matplotlib"] = "plotly",
 ) -> go.Figure | matplotlib.figure.Figure:
     """Bar chart of distinct region count at each depth.
