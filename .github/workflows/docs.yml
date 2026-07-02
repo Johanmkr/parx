@@ -31,11 +31,14 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Create virtual environment
+        run: uv venv --python 3.12
+
       - name: Install docs dependencies
-        run: uv pip install --system mkdocs mkdocs-material
+        run: uv pip install mkdocs mkdocs-material
 
       - name: Build site
-        run: mkdocs build --strict
+        run: uv run mkdocs build --strict
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
