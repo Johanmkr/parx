@@ -168,12 +168,22 @@ def _require_matplotlib(caller: str) -> SimpleNamespace:
 
 
 def _css_rgb_to_mpl(css: str) -> tuple[float, float, float]:
-    """Convert a Plotly ``"rgb(r,g,b)"`` string to a 0–1 matplotlib RGB tuple."""
-    m = _CSS_RGB_RE.match(css)
-    if not m:
-        raise ValueError(f"cannot parse CSS color {css!r} as rgb(r,g,b)")
-    r, g, b = (int(v) / 255.0 for v in m.groups())
-    return (r, g, b)
+    """Convert a CSS color string to a 0–1 matplotlib RGB tuple.
+
+    Supports Plotly-style ``"rgb(r,g,b)"`` strings as well as hex and named colors.
+    """
+    m = _CSS_RGB_RE.fullmatch(css.strip())
+    if m:
+        r, g, b = (int(v) / 255.0 for v in m.groups())
+        return (r, g, b)
+
+    # Fallback for other CSS-like formats (e.g. "#ff0000", "tab:blue").
+    import matplotlib.colors as mcolors
+
+    try:
+        return mcolors.to_rgb(css)
+    except ValueError as e:
+        raise ValueError(f"cannot parse CSS color {css!r}") from e
 
 
 def _mpl_resolve_colors(
