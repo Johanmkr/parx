@@ -50,3 +50,6 @@ examples/output/
 
 # marimo
 __marimo__/
+
+# MkDocs
+site/
