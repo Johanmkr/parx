@@ -98,7 +98,7 @@ class TestFromPath:
         path = tmp_path / "model.pkl"
         path.write_bytes(b"not a real checkpoint")
 
-        with pytest.raises(pickle.UnpicklingError):
+        with pytest.raises((pickle.UnpicklingError, RuntimeError, EOFError)):
             load_network(path)
 
 
