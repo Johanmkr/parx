@@ -29,6 +29,7 @@ def __():
     import parx
 
     import copy
+    import tempfile
 
     import numpy as np
     import torch
@@ -40,50 +41,92 @@ def __():
         dead_neurons,
         region_size_summary,
         animate_epochs,
+        save_partition,
+        load_partition,
     )
-    from parx.viz import plot_partition_2d, plot_region_counts, plot_halfspaces
+    from parx.viz import (
+        plot_partition_2d,
+        plot_region_counts,
+        plot_halfspaces,
+        plot_partition_slice,
+        plot_partition_projection,
+        affine_spectral,
+    )
+    from parx.verify import (
+        check_no_overlaps,
+        check_covers_space,
+        check_regions_nonempty,
+    )
 
     return (
+        affine_spectral,
         animate_epochs,
+        check_covers_space,
+        check_no_overlaps,
+        check_regions_nonempty,
         complexity_profile,
         compute_partition,
         copy,
         dead_neurons,
+        load_partition,
         nn,
         np,
         parx,
         plot_halfspaces,
         plot_partition_2d,
+        plot_partition_projection,
+        plot_partition_slice,
         plot_region_counts,
         region_size_summary,
+        save_partition,
+        tempfile,
         torch,
     )
 
 
 # ── title ─────────────────────────────────────────────────────────────────────
 
-@app.cell
+@app.cell(hide_code=True)
 def __(mo):
     mo.md(r"""
     # parx quick tour — Plotly backend
 
-    `parx` exactly enumerates the **linear (polyhedral activation) regions**
-    of a ReLU network: the maximal convex pieces of input space on which the
-    network is a single fixed affine map.
+    A ReLU network is piecewise-affine: fix which neurons fire (its
+    "activation pattern") and the rest of the function is just an affine map
+    `f(x) = A @ x + b`. `parx` **exactly enumerates** these pieces — the
+    maximal convex "linear regions" of input space on which the activation
+    pattern, and therefore the affine map, is constant.
 
-    This notebook walks through the public Python API end-to-end — building a
-    toy network, computing its partition, inspecting the result, running a
-    couple of analysis functions, and visualizing everything. All figures use
-    `parx.viz`'s **Plotly backend**, which is the default (`backend="plotly"`)
-    for every plotting function: interactive figures with hover tooltips and,
-    for the epoch animation, a play button and slider.
+    This matters for a few reasons:
+
+    - **Interpretability** — the affine map on any single region tells you
+      exactly what the network computes there, with no approximation.
+    - **Complexity / expressivity** — the number of regions is a standard
+      proxy for how expressive a network is; `parx` can track it across
+      training checkpoints.
+    - **Verification** — geometric properties (region volume, boundedness,
+      Lipschitz constant per region) are computable exactly rather than
+      estimated, and `parx.verify` can sanity-check the result itself.
+
+    This notebook walks the public Python API end-to-end: build a toy
+    network, compute its partition, inspect regions, compare enumeration
+    methods, run analysis and verification functions, visualize a 2D and a
+    higher-dimensional example, and save/reload a partition. All figures use
+    `parx.viz`'s **Plotly backend** (`backend="plotly"`, the default) —
+    interactive figures with hover tooltips and, for the epoch animation, a
+    play button and slider.
+
+    **Run interactively:** `uv run notebooks/demo_plotly.py` opens this
+    notebook in marimo's editor with both code and outputs visible (the
+    inline `# /// script` block at the top declares its dependencies, so
+    `uv` builds an isolated environment automatically).
     """)
     return
 
 
 # ── build a toy network ─────────────────────────────────────────────────────────
 
-@app.cell
+@app.cell(hide_code=True)
 def __(mo):
     mo.md(r"""
     ## Build a toy network
@@ -109,7 +152,7 @@ def __(nn, torch):
 
 # ── compute the partition ────────────────────────────────────────────────────────
 
-@app.cell
+@app.cell(hide_code=True)
 def __(mo):
     mo.md(r"""
     ## Compute the partition
@@ -137,7 +180,7 @@ def __(compute_partition, mo, np, state_dict):
 
 # ── inspect the Partition object ─────────────────────────────────────────────────
 
-@app.cell
+@app.cell(hide_code=True)
 def __(mo):
     mo.md(r"""
     ## Inspecting the `Partition` object
@@ -174,7 +217,7 @@ def __(X, mo, partition):
 
 # ── analysis functions ───────────────────────────────────────────────────────────
 
-@app.cell
+@app.cell(hide_code=True)
 def __(mo):
     mo.md(r"""
     ## Analysis functions
@@ -211,9 +254,46 @@ def __(complexity_profile, dead_neurons, mo, partition, region_size_summary):
     return
 
 
-# ── visualization ─────────────────────────────────────────────────────────────────
+# ── comparing enumeration methods ─────────────────────────────────────────────────
+
+@app.cell(hide_code=True)
+def __(mo):
+    mo.md(r"""
+    ## Comparing enumeration methods
+
+    `parx` ships several interchangeable region-finding methods
+    (`parx.list_methods()`). Sparse methods scan a finite batch of points and
+    can miss regions that no sample lands in; exact methods run a complete
+    DFS + facet-flip search from a single starting point and are guaranteed
+    to find every region, at the cost of scaling combinatorially with network
+    width. On a network this small, the two should agree exactly.
+    """)
+    return
+
 
 @app.cell
+def __(X, compute_partition, mo, parx, partition, state_dict):
+    _exact = compute_partition(state_dict, X, method="exact_julia_fast")
+    _agree = len(_exact) == len(partition)
+
+    mo.md(f"""
+    `parx.list_methods()` → `{parx.list_methods()}`
+
+    - `sparse_julia` (used above): **{len(partition)}** regions found from
+      {X.shape[0]} samples
+    - `exact_julia_fast`: **{len(_exact)}** regions found by exhaustive
+      DFS + facet-flip search
+
+    {"✅ They agree" if _agree else "⚠️ They differ"} on this small network —
+    exact methods are complete by construction, so any mismatch would mean
+    the sparse sample missed a region.
+    """)
+    return (_exact,)
+
+
+# ── visualization ─────────────────────────────────────────────────────────────────
+
+@app.cell(hide_code=True)
 def __(mo):
     mo.md(r"""
     ## Visualizing with the Plotly backend
@@ -251,9 +331,88 @@ def __(partition, plot_halfspaces):
     return (fig_halfspaces,)
 
 
-# ── training-time tracking ────────────────────────────────────────────────────────
+# ── custom coloring ────────────────────────────────────────────────────────────────
+
+@app.cell(hide_code=True)
+def __(mo):
+    mo.md(r"""
+    ### Custom coloring
+
+    `color_by` accepts any `(partition, region) -> float` callable. Built-ins
+    in `parx.viz` include `affine_frobenius` (the default, ‖A‖_F),
+    `affine_spectral` (the local Lipschitz constant — the top singular value
+    of `A`), `affine_det`, and `active_neuron_count`. Swap the colorscale
+    with `colorscale=`, or hand `plot_partition_2d` a fixed palette via
+    `colors=region_palette(partition, scheme=...)`.
+    """)
+    return
+
 
 @app.cell
+def __(affine_spectral, partition, plot_partition_2d):
+    fig_spectral = plot_partition_2d(
+        partition,
+        domain=((-1.0, 1.0), (-1.0, 1.0)),
+        color_by=affine_spectral,
+        colorscale="Plasma",
+        backend="plotly",
+    )
+    fig_spectral
+    return (fig_spectral,)
+
+
+# ── higher-dimensional partitions ─────────────────────────────────────────────────
+
+@app.cell(hide_code=True)
+def __(mo):
+    mo.md(r"""
+    ## Higher-dimensional partitions: slice & projection
+
+    `plot_partition_2d` requires `input_dim == 2`. For higher-dimensional
+    networks, `plot_partition_slice` fixes all but two input dimensions and
+    renders the induced 2D slice exactly; `plot_partition_projection`
+    instead projects the halfspace normals onto an arbitrary 2D subspace —
+    an approximation, since projecting a polytope's dual representation
+    isn't generally exact (see the function's docstring). Below is a
+    3-input network, exactly enumerated with `exact_julia_fast`.
+    """)
+    return
+
+
+@app.cell
+def __(compute_partition, mo, nn, np, torch):
+    torch.manual_seed(1)
+    model_3d = nn.Sequential(
+        nn.Linear(3, 4), nn.ReLU(),
+        nn.Linear(4, 1),
+    )
+    partition_3d = compute_partition(
+        model_3d.state_dict(), np.zeros((1, 3)), method="exact_julia_fast"
+    )
+    mo.md(f"3-input network → **{len(partition_3d)}** regions in ℝ³.")
+    return model_3d, partition_3d
+
+
+@app.cell
+def __(partition_3d, plot_partition_slice):
+    fig_slice = plot_partition_slice(
+        partition_3d, free_dims=(0, 1), fixed_values={2: 0.0}, backend="plotly"
+    )
+    fig_slice
+    return (fig_slice,)
+
+
+@app.cell
+def __(np, partition_3d, plot_partition_projection):
+    projection = np.eye(3)[:, :2]  # drop the 3rd input dimension
+    fig_proj = plot_partition_projection(partition_3d, projection, backend="plotly")
+    fig_proj
+    return fig_proj, projection
+
+
+# ── training-time tracking ────────────────────────────────────────────────────────
+
+@app.cell(hide_code=True)
 def __(mo):
     mo.md(r"""
     ## Training-time tracking with `animate_epochs`
@@ -295,19 +454,90 @@ def __(animate_epochs, epoch_labels, partitions):
     return (fig_anim,)
 
 
-# ── closing note ──────────────────────────────────────────────────────────────────
+# ── verification ──────────────────────────────────────────────────────────────────
+
+@app.cell(hide_code=True)
+def __(mo):
+    mo.md(r"""
+    ## Verifying correctness
+
+    `parx.verify` runs geometric sanity checks against the reconstructed
+    halfspace systems — useful after changing a region-finding method, or
+    just to build confidence that a partition is correct.
+    """)
+    return
+
 
 @app.cell
+def __(
+    check_covers_space,
+    check_no_overlaps,
+    check_regions_nonempty,
+    mo,
+    partition,
+    rng,
+):
+    _X_test = rng.uniform(-1.0, 1.0, size=(2000, 2))
+    _no_overlap, _ = check_no_overlaps(partition, _X_test)
+    _covers, _counts = check_covers_space(partition, _X_test)
+    _nonempty, _bad, _radii = check_regions_nonempty(partition)
+
+    mo.md(f"""
+    - `check_no_overlaps`: **{"pass ✅" if _no_overlap else "FAIL ✗"}** — no
+      sample point lands in two regions' interiors.
+    - `check_covers_space`: **{"pass ✅" if _covers else f"{int((_counts == 0).sum())} uncovered points"}**
+      — every sample point belongs to exactly one region (sparse partitions
+      can miss coverage; this sample is dense enough to pass).
+    - `check_regions_nonempty`: **{"pass ✅" if _nonempty else f"{len(_bad)} degenerate regions"}**
+      — every region has a strictly positive Chebyshev radius (min radius
+      found: `{_radii.min():.4f}`).
+    """)
+    return
+
+
+# ── save & reload ─────────────────────────────────────────────────────────────────
+
+@app.cell(hide_code=True)
+def __(mo):
+    mo.md(r"""
+    ## Save & reload
+
+    `save_partition`/`load_partition` serialize a `Partition` to a `.npz`
+    bundle — NumPy-native, no Julia required to reload. A saved partition
+    can be analyzed or visualized in an environment that never installed
+    Julia at all.
+    """)
+    return
+
+
+@app.cell
+def __(load_partition, mo, partition, save_partition, tempfile):
+    _path = tempfile.mktemp(suffix=".npz")
+    save_partition(partition, _path)
+    reloaded = load_partition(_path)
+
+    mo.md(f"""
+    Saved **{len(partition)}** regions to `{_path}` and reloaded them:
+    `len(reloaded) == len(partition)` → **{len(reloaded) == len(partition)}**
+    """)
+    return (reloaded,)
+
+
+# ── closing note ──────────────────────────────────────────────────────────────────
+
+@app.cell(hide_code=True)
 def __(mo):
     mo.md(r"""
     ## Matplotlib backend
 
     An identical notebook using the matplotlib backend lives at
-    `notebooks/demo_plt.py`. The only difference is `backend="matplotlib"`
-    passed to each `parx.viz` call:
+    `notebooks/demo_plt.py` (also runnable via `uv run notebooks/demo_plt.py`).
+    The only difference is `backend="matplotlib"` passed to each `parx.viz`
+    call:
 
-    - `plot_partition_2d`, `plot_region_counts`, `plot_halfspaces` return a
-      static `matplotlib.figure.Figure` instead of an interactive
+    - `plot_partition_2d`, `plot_region_counts`, `plot_halfspaces`,
+      `plot_partition_slice`, `plot_partition_projection` return a static
+      `matplotlib.figure.Figure` instead of an interactive
       `plotly.graph_objects.Figure` — no hover tooltips, but easily saved
       with `fig.savefig(...)`.
     - `animate_epochs` returns a `matplotlib.animation.FuncAnimation` instead
@@ -320,4 +550,10 @@ def __(mo):
 
 
 if __name__ == "__main__":
+    import os
+
+    # Running this file directly (e.g. `uv run notebooks/demo_plotly.py`)
+    # normally executes the notebook headlessly with nothing shown. Setting
+    # this launches marimo's editor instead, so code and outputs are visible.
+    os.environ.setdefault("MARIMO_SCRIPT_EDIT", "1")
     app.run()
