@@ -11,20 +11,19 @@
 
 import marimo
 
-__generated_with = "0.13.0"
+__generated_with = "0.23.8"
 app = marimo.App(width="medium")
 
 
-# ── imports ───────────────────────────────────────────────────────────────────
-
 @app.cell
-def __():
+def _():
     import marimo as mo
+
     return (mo,)
 
 
 @app.cell
-def __():
+def _():
     # juliacall must be imported before torch — parx handles this at import time
     import parx
 
@@ -84,10 +83,8 @@ def __():
     )
 
 
-# ── title ─────────────────────────────────────────────────────────────────────
-
 @app.cell(hide_code=True)
-def __(mo):
+def _(mo):
     mo.md(r"""
     # parx quick tour — matplotlib backend
 
@@ -108,14 +105,18 @@ def __(mo):
       Lipschitz constant per region) are computable exactly rather than
       estimated, and `parx.verify` can sanity-check the result itself.
 
-    This notebook walks the public Python API end-to-end: build a toy
-    network, compute its partition, inspect regions, compare enumeration
-    methods, run analysis and verification functions, visualize a 2D and a
-    higher-dimensional example, and save/reload a partition. All figures use
-    `parx.viz`'s **matplotlib backend** (`backend="matplotlib"`), which
-    produces static `matplotlib.figure.Figure` objects — no hover tooltips,
-    and the epoch animation is a plain `matplotlib.animation.FuncAnimation`
-    with no play button or slider. Requires `pip install "parx[animate]"`.
+    This notebook walks the public Python API end-to-end using a single
+    running example: a small classifier trained on the **two moons**
+    dataset. We compute both the **sparse** and **exact** partitions
+    **before, during, and after training**, look at the partition **layer by
+    layer**, animate the whole training run, then continue into the rest of
+    the API — inspecting a `Partition`, running analysis/verification
+    functions, visualizing a higher-dimensional example, and saving/reloading
+    a partition. All figures use `parx.viz`'s **matplotlib backend**
+    (`backend="matplotlib"`), which produces static `matplotlib.figure.Figure`
+    objects — no hover tooltips, and the epoch animation is a plain
+    `matplotlib.animation.FuncAnimation` with no play button or slider.
+    Requires `pip install "parx[animate]"`.
 
     **Run interactively:** `uv run notebooks/demo_plt.py` opens this
     notebook in marimo's editor with both code and outputs visible (the
@@ -125,64 +126,299 @@ def __(mo):
     return
 
 
-# ── build a toy network ─────────────────────────────────────────────────────────
-
 @app.cell(hide_code=True)
-def __(mo):
+def _(mo):
     mo.md(r"""
-    ## Build a toy network
+    ## The dataset: two interleaving moons
 
-    A small 2-input MLP with two ReLU hidden layers of width 4 — small enough
-    that the resulting partition has only a handful of regions, so every plot
-    below stays readable.
+    Two interleaving half-circles of points, each labelled by which moon it
+    belongs to — a standard nonlinear classification benchmark: no straight
+    line separates the classes, so a network needs at least one hidden layer
+    to fit it. Generated here with plain NumPy (no extra dependency).
     """)
     return
 
 
 @app.cell
-def __(nn, torch):
+def _(np):
+    def make_two_moons(n_samples=240, noise=0.15, seed=0):
+        rng = np.random.default_rng(seed)
+        n0 = n_samples // 2
+        n1 = n_samples - n0
+        theta0 = rng.uniform(0, np.pi, n0)
+        upper = np.stack([np.cos(theta0), np.sin(theta0)], axis=1)
+        theta1 = rng.uniform(0, np.pi, n1)
+        lower = np.stack([1 - np.cos(theta1), 1 - np.sin(theta1) - 0.5], axis=1)
+        pts = np.concatenate([upper, lower], axis=0)
+        pts = pts + rng.normal(0.0, noise, size=pts.shape)
+        labels = np.concatenate([np.zeros(n0), np.ones(n1)])
+        perm = rng.permutation(n_samples)
+        return pts[perm].astype(np.float32), labels[perm].astype(np.float32)
+
+    X_moons, y_moons = make_two_moons()
+    return X_moons, make_two_moons, y_moons
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## The network: a small classifier
+
+    A 2-input MLP with two ReLU hidden layers of width 8 (16 neurons total)
+    and a single logit output — small enough to enumerate exactly in
+    milliseconds, expressive enough to fit the moons.
+    """)
+    return
+
+
+@app.cell
+def _(nn, torch):
     torch.manual_seed(0)
     model = nn.Sequential(
-        nn.Linear(2, 4), nn.ReLU(),
-        nn.Linear(4, 4), nn.ReLU(),
-        nn.Linear(4, 1),
+        nn.Linear(2, 8), nn.ReLU(),
+        nn.Linear(8, 8), nn.ReLU(),
+        nn.Linear(8, 1),
     )
-    state_dict = model.state_dict()
-    return model, state_dict
+    return (model,)
 
-
-# ── compute the partition ────────────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
-def __(mo):
+def _(mo):
     mo.md(r"""
-    ## Compute the partition
+    ## Training with checkpoints
 
-    `compute_partition` accepts an `nn.Module`, a `state_dict`, or a path to a
-    `.pth`/`.h5` file. Sparse methods (the default, `"sparse_julia"`) scan a
-    batch of input points for distinct activation patterns — fast, but may
-    miss low-density regions. `"exact_julia"` / `"exact_julia_fast"` instead
-    run a complete DFS + facet-flip enumeration from a single starting point.
+    `parx` doesn't run any training itself — the caller trains however it
+    likes and hands a `state_dict` (or several) to `compute_partition`. Here
+    we train the classifier for real with Adam + BCE loss, and save three
+    checkpoints: the random **initialization** ("before"), an early,
+    partially-fit epoch ("during"), and the final, converged network
+    ("after"). Everything below computes both partitioning methods for all
+    three.
     """)
     return
 
 
 @app.cell
-def __(compute_partition, mo, np, state_dict):
-    rng = np.random.default_rng(0)
-    X = rng.uniform(-1.0, 1.0, size=(400, 2))
+def _(X_moons, copy, mo, model, nn, torch, y_moons):
+    _Xt = torch.tensor(X_moons)
+    _yt = torch.tensor(y_moons).unsqueeze(1)
+    _opt = torch.optim.Adam(model.parameters(), lr=0.05)
+    _loss_fn = nn.BCEWithLogitsLoss()
 
-    with mo.status.spinner(title="Computing partition …"):
-        partition = compute_partition(state_dict, X, method="sparse_julia")
+    n_epochs = 300
+    mid_epoch = 10
+    checkpoints = {"before": copy.deepcopy(model.state_dict())}
+    for _epoch in range(n_epochs):
+        _opt.zero_grad()
+        _out = model(_Xt)
+        _loss = _loss_fn(_out, _yt)
+        _loss.backward()
+        _opt.step()
+        if _epoch == mid_epoch:
+            checkpoints["during"] = copy.deepcopy(model.state_dict())
+    checkpoints["after"] = copy.deepcopy(model.state_dict())
 
-    mo.md(f"Found **{len(partition)}** linear regions from {X.shape[0]} sample points.")
-    return X, partition, rng
+    with torch.no_grad():
+        final_acc = ((model(_Xt) > 0).float() == _yt).float().mean().item()
 
+    mo.md(f"""
+    Trained for **{n_epochs}** epochs (Adam, BCE loss) → final training
+    accuracy **{final_acc:.1%}**. Checkpoints captured at epoch **0**
+    (before), epoch **{mid_epoch}** (during), and epoch **{n_epochs}**
+    (after).
+    """)
+    return checkpoints, mid_epoch, n_epochs
 
-# ── inspect the Partition object ─────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
-def __(mo):
+def _(mo):
+    mo.md(r"""
+    ## Sparse vs. exact, at every checkpoint
+
+    One shared sample grid — a padded box around the moons' bounding box —
+    is handed to both `"sparse_julia"` (scans the sample for distinct
+    activation patterns) and `"exact_julia_fast"` (a complete DFS +
+    facet-flip enumeration) for each of the three checkpoints.
+    """)
+    return
+
+
+@app.cell
+def _(X_moons, np):
+    rng = np.random.default_rng(1)
+    _pad = 0.6
+    x_range = (float(X_moons[:, 0].min() - _pad), float(X_moons[:, 0].max() + _pad))
+    y_range = (float(X_moons[:, 1].min() - _pad), float(X_moons[:, 1].max() + _pad))
+    domain = (x_range, y_range)
+    X = rng.uniform(
+        [x_range[0], y_range[0]], [x_range[1], y_range[1]], size=(1500, 2)
+    )
+    return X, domain, rng
+
+
+@app.cell
+def _(X, checkpoints, compute_partition, mo, parx):
+    with mo.status.spinner(title="Computing sparse & exact partitions for each checkpoint …"):
+        partitions_sparse = {
+            stage: compute_partition(sd, X, method="sparse_julia")
+            for stage, sd in checkpoints.items()
+        }
+        partitions_exact = {
+            stage: compute_partition(sd, X, method="exact_julia_fast")
+            for stage, sd in checkpoints.items()
+        }
+
+    _rows = "\n".join(
+        f"| {stage} | {len(partitions_sparse[stage])} | {len(partitions_exact[stage])} |"
+        for stage in ("before", "during", "after")
+    )
+    mo.md(f"""
+    `parx.list_methods()` → `{parx.list_methods()}`
+
+    Same {X.shape[0]}-point sample grid, two methods, three checkpoints:
+
+    | checkpoint | `sparse_julia` regions | `exact_julia_fast` regions |
+    |---|---|---|
+    {_rows}
+
+    The sparse scan consistently finds fewer regions than the exact
+    enumeration — it can only report activation patterns that some sampled
+    point actually lands in, while `exact_julia_fast` enumerates every
+    region by construction, regardless of how densely the input space
+    happens to be sampled.
+    """)
+    return partitions_exact, partitions_sparse
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The rest of this notebook uses the fully-trained ("after") exact
+    partition as its running example.
+    """)
+    return
+
+
+@app.cell
+def _(partitions_exact):
+    partition = partitions_exact["after"]
+    return (partition,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multiple layers: how depth builds the partition
+
+    `plot_partition_2d`'s `layer=` argument collapses every leaf region to
+    its activation-path *prefix* of that length, showing the coarser
+    partition induced by only the first `layer` ReLU layers. Below: the
+    trained network's partition after just the first hidden layer
+    (`layer=1`, one arrangement of 8 hyperplanes) versus the full two-layer
+    partition (`layer=2`) — the second layer visibly folds the coarse wedges
+    into a much finer arrangement that hugs the moons' decision boundary.
+    """)
+    return
+
+
+@app.cell
+def _(X_moons, domain, mo, partition, plot_partition_2d, y_moons):
+    _figs = []
+    for _layer in (1, 2):
+        _fig = plot_partition_2d(
+            partition, domain=domain, layer=_layer, backend="matplotlib"
+        )
+        _fig.axes[0].scatter(
+            X_moons[:, 0], X_moons[:, 1], c=y_moons, cmap="coolwarm",
+            s=12, edgecolors="black", linewidths=0.3, zorder=5,
+        )
+        _figs.append(_fig)
+    mo.hstack(_figs)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Watching the partition emerge across training
+
+    Same domain, same coloring, one exact partition per checkpoint —
+    scattered on top are the moons themselves. At initialization the
+    boundaries are unrelated to the data; by the end they've organized
+    themselves densely around the decision boundary between the two
+    classes.
+    """)
+    return
+
+
+@app.cell
+def _(
+    X_moons,
+    domain,
+    mid_epoch,
+    mo,
+    n_epochs,
+    partitions_exact,
+    plot_partition_2d,
+    y_moons,
+):
+    _labels = {
+        "before": "before training (random init)",
+        "during": f"during training (epoch {mid_epoch})",
+        "after": f"after training (epoch {n_epochs}, converged)",
+    }
+    _figs = []
+    for _stage in ("before", "during", "after"):
+        _fig = plot_partition_2d(
+            partitions_exact[_stage], domain=domain, backend="matplotlib"
+        )
+        _fig.axes[0].scatter(
+            X_moons[:, 0], X_moons[:, 1], c=y_moons, cmap="coolwarm",
+            s=12, edgecolors="black", linewidths=0.3, zorder=5,
+        )
+        _fig.axes[0].set_title(_labels[_stage])
+        _figs.append(_fig)
+    mo.hstack(_figs)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Training-time tracking with `animate_epochs`
+
+    The same three checkpoints, animated. `animate_epochs` shares a fixed
+    color scale and spatial range across frames so the growth in complexity
+    is visually comparable; we use the (fast) sparse partitions here since
+    the animation is illustrative rather than exact-count-critical.
+    """)
+    return
+
+
+@app.cell
+def _(animate_epochs, domain, mid_epoch, mo, n_epochs, partitions_sparse):
+    # backend="matplotlib" returns a FuncAnimation, not a Figure — there is no
+    # native play/pause/slider widget, so we render it as embedded JS playback.
+    _order = ["before", "during", "after"]
+    _epoch_labels = [
+        "before (epoch 0)",
+        f"during (epoch {mid_epoch})",
+        f"after (epoch {n_epochs})",
+    ]
+    anim = animate_epochs(
+        [partitions_sparse[_stage] for _stage in _order],
+        epoch_labels=_epoch_labels,
+        x_range=domain[0],
+        y_range=domain[1],
+        backend="matplotlib",
+    )
+    anim_html = mo.Html(anim.to_jshtml())
+    anim_html
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
     mo.md(r"""
     ## Inspecting the `Partition` object
 
@@ -194,7 +430,7 @@ def __(mo):
 
 
 @app.cell
-def __(X, mo, partition):
+def _(X, mo, partition):
     _region = partition.regions[0]
     _D, _g = partition.halfspaces(_region)
     _A, _b = partition.local_affine(_region)
@@ -216,10 +452,8 @@ def __(X, mo, partition):
     return
 
 
-# ── analysis functions ───────────────────────────────────────────────────────────
-
 @app.cell(hide_code=True)
-def __(mo):
+def _(mo):
     mo.md(r"""
     ## Analysis functions
 
@@ -230,7 +464,7 @@ def __(mo):
 
 
 @app.cell
-def __(complexity_profile, dead_neurons, mo, partition, region_size_summary):
+def _(complexity_profile, dead_neurons, mo, partition, region_size_summary):
     _profile = complexity_profile(partition)
     _dead = dead_neurons(partition)
     _size = region_size_summary(partition)
@@ -255,91 +489,49 @@ def __(complexity_profile, dead_neurons, mo, partition, region_size_summary):
     return
 
 
-# ── comparing enumeration methods ─────────────────────────────────────────────────
-
 @app.cell(hide_code=True)
-def __(mo):
-    mo.md(r"""
-    ## Comparing enumeration methods
-
-    `parx` ships several interchangeable region-finding methods
-    (`parx.list_methods()`). Sparse methods scan a finite batch of points and
-    can miss regions that no sample lands in; exact methods run a complete
-    DFS + facet-flip search from a single starting point and are guaranteed
-    to find every region, at the cost of scaling combinatorially with network
-    width. On a network this small, the two should agree exactly.
-    """)
-    return
-
-
-@app.cell
-def __(X, compute_partition, mo, parx, partition, state_dict):
-    _exact = compute_partition(state_dict, X, method="exact_julia_fast")
-    _agree = len(_exact) == len(partition)
-
-    mo.md(f"""
-    `parx.list_methods()` → `{parx.list_methods()}`
-
-    - `sparse_julia` (used above): **{len(partition)}** regions found from
-      {X.shape[0]} samples
-    - `exact_julia_fast`: **{len(_exact)}** regions found by exhaustive
-      DFS + facet-flip search
-
-    {"✅ They agree" if _agree else "⚠️ They differ"} on this small network —
-    exact methods are complete by construction, so any mismatch would mean
-    the sparse sample missed a region.
-    """)
-    return (_exact,)
-
-
-# ── visualization ─────────────────────────────────────────────────────────────────
-
-@app.cell(hide_code=True)
-def __(mo):
+def _(mo):
     mo.md(r"""
     ## Visualizing with the matplotlib backend
 
     Every `parx.viz` plotting function accepts `backend: Literal["plotly",
     "matplotlib"] = "plotly"`. Here we pass `backend="matplotlib"` explicitly
     to every call — figures are returned directly from the cell and marimo
-    renders the static image inline.
+    renders the static image inline. These use the same fully-trained
+    partition and domain as above.
     """)
     return
 
 
 @app.cell
-def __(partition, plot_partition_2d):
-    fig_partition = plot_partition_2d(
-        partition, domain=((-1.0, 1.0), (-1.0, 1.0)), backend="matplotlib"
-    )
+def _(domain, partition, plot_partition_2d):
+    fig_partition = plot_partition_2d(partition, domain=domain, backend="matplotlib")
     fig_partition
-    return (fig_partition,)
+    return
 
 
 @app.cell
-def __(partition, plot_region_counts):
+def _(partition, plot_region_counts):
     fig_counts = plot_region_counts(partition, backend="matplotlib")
     fig_counts
-    return (fig_counts,)
+    return
 
 
 @app.cell
-def __(partition, plot_halfspaces):
+def _(domain, partition, plot_halfspaces):
     fig_halfspaces = plot_halfspaces(
         partition,
         partition.regions[0],
-        x_range=(-1.0, 1.0),
-        y_range=(-1.0, 1.0),
+        x_range=domain[0],
+        y_range=domain[1],
         backend="matplotlib",
     )
     fig_halfspaces
-    return (fig_halfspaces,)
+    return
 
-
-# ── custom coloring ────────────────────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
-def __(mo):
+def _(mo):
     mo.md(r"""
     ### Custom coloring
 
@@ -354,22 +546,20 @@ def __(mo):
 
 
 @app.cell
-def __(affine_spectral, partition, plot_partition_2d):
+def _(affine_spectral, domain, partition, plot_partition_2d):
     fig_spectral = plot_partition_2d(
         partition,
-        domain=((-1.0, 1.0), (-1.0, 1.0)),
+        domain=domain,
         color_by=affine_spectral,
         colorscale="Plasma",
         backend="matplotlib",
     )
     fig_spectral
-    return (fig_spectral,)
+    return
 
-
-# ── higher-dimensional partitions ─────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
-def __(mo):
+def _(mo):
     mo.md(r"""
     ## Higher-dimensional partitions: slice & projection
 
@@ -385,7 +575,7 @@ def __(mo):
 
 
 @app.cell
-def __(compute_partition, mo, nn, np, torch):
+def _(compute_partition, mo, nn, np, torch):
     torch.manual_seed(1)
     model_3d = nn.Sequential(
         nn.Linear(3, 4), nn.ReLU(),
@@ -395,77 +585,28 @@ def __(compute_partition, mo, nn, np, torch):
         model_3d.state_dict(), np.zeros((1, 3)), method="exact_julia_fast"
     )
     mo.md(f"3-input network → **{len(partition_3d)}** regions in ℝ³.")
-    return model_3d, partition_3d
+    return (partition_3d,)
 
 
 @app.cell
-def __(partition_3d, plot_partition_slice):
+def _(partition_3d, plot_partition_slice):
     fig_slice = plot_partition_slice(
         partition_3d, free_dims=(0, 1), fixed_values={2: 0.0}, backend="matplotlib"
     )
     fig_slice
-    return (fig_slice,)
-
-
-@app.cell
-def __(np, partition_3d, plot_partition_projection):
-    projection = np.eye(3)[:, :2]  # drop the 3rd input dimension
-    fig_proj = plot_partition_projection(partition_3d, projection, backend="matplotlib")
-    fig_proj
-    return fig_proj, projection
-
-
-# ── training-time tracking ────────────────────────────────────────────────────────
-
-@app.cell(hide_code=True)
-def __(mo):
-    mo.md(r"""
-    ## Training-time tracking with `animate_epochs`
-
-    `parx` doesn't run any training itself — the caller computes one
-    `Partition` per checkpoint (see `parx.iter_state_dicts` for iterating
-    saved checkpoints) and hands the list to `animate_epochs`. Here we fake
-    three checkpoints by adding growing Gaussian noise to the same base
-    weights, just to have more than one partition to animate.
-    """)
     return
 
 
 @app.cell
-def __(X, compute_partition, copy, np, state_dict, torch):
-    _rng = np.random.default_rng(1)
-    partitions = []
-    epoch_labels = []
-    for _epoch, _scale in enumerate([0.0, 0.3, 0.6]):
-        _sd = copy.deepcopy(state_dict)
-        for _k, _v in _sd.items():
-            _noise = torch.tensor(_rng.normal(0.0, _scale, size=tuple(_v.shape)), dtype=_v.dtype)
-            _sd[_k] = _v + _noise
-        partitions.append(compute_partition(_sd, X, method="sparse_julia"))
-        epoch_labels.append(f"epoch {_epoch}")
-    return epoch_labels, partitions
+def _(np, partition_3d, plot_partition_projection):
+    projection = np.eye(3)[:, :2]  # drop the 3rd input dimension
+    fig_proj = plot_partition_projection(partition_3d, projection, backend="matplotlib")
+    fig_proj
+    return
 
-
-@app.cell
-def __(animate_epochs, epoch_labels, mo, partitions):
-    # backend="matplotlib" returns a FuncAnimation, not a Figure — there is no
-    # native play/pause/slider widget, so we render it as embedded JS playback.
-    anim = animate_epochs(
-        partitions,
-        epoch_labels=epoch_labels,
-        x_range=(-1.0, 1.0),
-        y_range=(-1.0, 1.0),
-        backend="matplotlib",
-    )
-    anim_html = mo.Html(anim.to_jshtml())
-    anim_html
-    return anim, anim_html
-
-
-# ── verification ──────────────────────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
-def __(mo):
+def _(mo):
     mo.md(r"""
     ## Verifying correctness
 
@@ -477,15 +618,18 @@ def __(mo):
 
 
 @app.cell
-def __(
+def _(
     check_covers_space,
     check_no_overlaps,
     check_regions_nonempty,
+    domain,
     mo,
     partition,
     rng,
 ):
-    _X_test = rng.uniform(-1.0, 1.0, size=(2000, 2))
+    _X_test = rng.uniform(
+        [domain[0][0], domain[1][0]], [domain[0][1], domain[1][1]], size=(2000, 2)
+    )
     _no_overlap, _ = check_no_overlaps(partition, _X_test)
     _covers, _counts = check_covers_space(partition, _X_test)
     _nonempty, _bad, _radii = check_regions_nonempty(partition)
@@ -503,10 +647,8 @@ def __(
     return
 
 
-# ── save & reload ─────────────────────────────────────────────────────────────────
-
 @app.cell(hide_code=True)
-def __(mo):
+def _(mo):
     mo.md(r"""
     ## Save & reload
 
@@ -519,7 +661,7 @@ def __(mo):
 
 
 @app.cell
-def __(load_partition, mo, partition, save_partition, tempfile):
+def _(load_partition, mo, partition, save_partition, tempfile):
     _path = tempfile.mktemp(suffix=".npz")
     save_partition(partition, _path)
     reloaded = load_partition(_path)
@@ -528,13 +670,11 @@ def __(load_partition, mo, partition, save_partition, tempfile):
     Saved **{len(partition)}** regions to `{_path}` and reloaded them:
     `len(reloaded) == len(partition)` → **{len(reloaded) == len(partition)}**
     """)
-    return (reloaded,)
+    return
 
-
-# ── closing note ──────────────────────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
-def __(mo):
+def _(mo):
     mo.md(r"""
     ## Plotly backend
 
@@ -557,10 +697,4 @@ def __(mo):
 
 
 if __name__ == "__main__":
-    import os
-
-    # Running this file directly (e.g. `uv run notebooks/demo_plt.py`)
-    # normally executes the notebook headlessly with nothing shown. Setting
-    # this launches marimo's editor instead, so code and outputs are visible.
-    os.environ.setdefault("MARIMO_SCRIPT_EDIT", "1")
     app.run()
