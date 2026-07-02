@@ -5,7 +5,7 @@
 #   "torch",
 #   "numpy",
 #   "plotly",
-#   "parx @ file:///home/johan/Documents/phd/parx",
+#   "parx @ file:.",
 # ]
 # ///
 
