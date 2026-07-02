@@ -38,7 +38,7 @@ jobs:
         run: uv pip install -e ".[dev]"
 
       - name: Instantiate Julia environment
-        run: julia --project=src/parx/julia -e "using Pkg; Pkg.resolve(); Pkg.instantiate()"
+        run: julia --project=src/parx/julia -e "using Pkg; Pkg.instantiate()"
 
       - name: Lint with ruff
         run: uv run ruff check src/ tests/
