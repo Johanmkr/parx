@@ -56,6 +56,20 @@ def _two_layer_partition() -> Partition:
     return Partition(regions=regions, weights=[W, W], biases=[b, b])
 
 
+def _unit_square_partition() -> Partition:
+    """One-layer [2→4] network whose single region is exactly [0,1]^2.
+
+    Active neurons 1,2 give -x1<=0, -x2<=0; inactive neurons 3,4 give
+    x1<=1, x2<=1 (see Partition.halfspaces' sign convention).
+    """
+    W = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
+    b = np.array([0.0, 0.0, -1.0, -1.0])
+    region = Region(
+        [np.array([True, True, False, False])], centroid=np.array([0.5, 0.5])
+    )
+    return Partition(regions=[region], weights=[W], biases=[b])
+
+
 def _always_dead_partition() -> Partition:
     """One-layer network where neuron 1 is always dead (never active)."""
     W = np.eye(2)
@@ -297,23 +311,10 @@ class TestRegionSizeSummary:
 class TestRegionVolumeEstimate:
     def test_unit_square_region(self):
         """A region defined by [0,1]^2 should have volume ≈ 1.0."""
-        # Constraints: x1 >= 0, x2 >= 0, x1 <= 1, x2 <= 1.
-        # In D @ x <= g form:
-        # -x1 <= 0, -x2 <= 0, x1 <= 1, x2 <= 1
-        # Override halfspaces by setting a custom region with fixed D, g.
-        # Instead, build a simple network where the halfspaces are [0,1]^2.
-        # Use a 1-layer network with W=I, b=[0,0]; region [T,T] gives:
-        # constraints x1 > 0, x2 > 0 (from active side)
-        # The Chebyshev ball will be centred at [0.5, 0.5] inside [0,1]^2 if
-        # centroid is there.  Actually the quadrant partition is [0,inf)^2.
-        # For a bounded box we need explicit upper bounds — skip exact test.
-        # Instead just check the estimate is a non-negative float.
-        p = _quadrant_partition()
-        region = p.regions[0]  # [T, T] → positive quadrant (unbounded)
-        vol = region_volume_estimate(p, region, n_samples=500, seed=42)
-        # Unbounded region: radius capped at 1e3.  Just check type and sign.
-        assert isinstance(vol, float)
-        assert vol >= 0.0
+        p = _unit_square_partition()
+        region = p.regions[0]
+        vol = region_volume_estimate(p, region, n_samples=5_000, seed=0)
+        assert vol == pytest.approx(1.0, abs=0.02)
 
     def test_reproducible_with_seed(self):
         p = _quadrant_partition()
@@ -322,14 +323,17 @@ class TestRegionVolumeEstimate:
         v2 = region_volume_estimate(p, region, n_samples=200, seed=7)
         assert v1 == pytest.approx(v2)
 
-    def test_different_seeds_may_differ(self):
-        """Different seeds should generally produce different estimates."""
+    def test_different_seeds_give_different_estimates(self):
+        """With few samples, distinct seeds must actually draw distinct samples.
+
+        Uses the quadrant partition (unbounded — the sampling box strictly
+        contains the region) so rejection sampling has real variance, unlike
+        the unit-square region where box == region and every sample is accepted.
+        """
         p = _quadrant_partition()
         region = p.regions[0]
-        v1 = region_volume_estimate(p, region, n_samples=100, seed=1)
-        v2 = region_volume_estimate(p, region, n_samples=100, seed=999)
-        # Not guaranteed to differ, but with different seeds they usually will.
-        # We just check both are valid floats.
+        v1 = region_volume_estimate(p, region, n_samples=50, seed=1)
+        v2 = region_volume_estimate(p, region, n_samples=50, seed=999)
         assert np.isfinite(v1) or v1 == float("inf")
         assert np.isfinite(v2) or v2 == float("inf")
 

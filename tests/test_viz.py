@@ -10,7 +10,12 @@ import torch.nn as nn
 from parx import compute_partition
 from parx.partition import Partition
 from parx.region import Region
-from parx.viz import animate_epochs, animate_epochs_video
+from parx.viz import (
+    animate_epochs,
+    animate_epochs_video,
+    plot_feature_embedding,
+    region_palette,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -24,6 +29,24 @@ def simple_partition():
     model = nn.Sequential(nn.Linear(2, 2, bias=False), nn.ReLU(), nn.Linear(2, 1))
     with torch.no_grad():
         model[0].weight.copy_(torch.eye(2))
+    X = np.array([[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]])
+    return compute_partition(model, X, method="sparse_julia")
+
+
+@pytest.fixture(scope="module")
+def two_layer_partition():
+    """2-layer network where 3 leaf regions share one layer-1 activation
+    pattern, so layer=1 strictly coarsens (1 region) vs the leaf level (3)."""
+    model = nn.Sequential(
+        nn.Linear(2, 2), nn.ReLU(),
+        nn.Linear(2, 2), nn.ReLU(),
+        nn.Linear(2, 1),
+    )
+    with torch.no_grad():
+        model[0].weight.copy_(torch.tensor([[1.0, 1.0], [1.0, -1.0]]))
+        model[0].bias.copy_(torch.tensor([10.0, 10.0]))
+        model[2].weight.copy_(torch.eye(2))
+        model[2].bias.copy_(torch.tensor([-11.0, -11.0]))
     X = np.array([[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]])
     return compute_partition(model, X, method="sparse_julia")
 
@@ -76,17 +99,18 @@ def test_plot_partition_2d_uses_explicit_domain(simple_partition):
     assert tuple(fig.layout.yaxis.range) == domain[1]
 
 
-def test_plot_partition_2d_layer_coarsens_regions(simple_partition):
+def test_plot_partition_2d_layer_coarsens_regions(two_layer_partition):
     from parx.viz import plot_partition_2d
 
-    # Identity network has 1 ReLU layer → at layer=1 and all-layers count must match
-    fig_leaf = plot_partition_2d(simple_partition, layer=simple_partition.n_layers)
-    fig_all = plot_partition_2d(simple_partition)
-    assert len(fig_leaf.data) == len(fig_all.data)
+    # layer=n_layers (leaf) must match the unfiltered, full-depth partition.
+    n_layers = two_layer_partition.n_layers
+    fig_leaf = plot_partition_2d(two_layer_partition, layer=n_layers)
+    fig_all = plot_partition_2d(two_layer_partition)
+    assert len(_polygon_traces(fig_leaf)) == len(_polygon_traces(fig_all))
 
-    # layer=1 must produce ≤ leaf count (same here, but at most)
-    fig_l1 = plot_partition_2d(simple_partition, layer=1)
-    assert len(fig_l1.data) <= len(fig_all.data)
+    # layer=1 must strictly coarsen: all 3 leaf regions share one layer-1 pattern.
+    fig_l1 = plot_partition_2d(two_layer_partition, layer=1)
+    assert len(_polygon_traces(fig_l1)) < len(_polygon_traces(fig_all))
 
 
 def test_plot_partition_2d_layer_out_of_range(simple_partition):
@@ -402,3 +426,68 @@ class TestAnimateEpochsVideo:
         out = tmp_path / "bad.gif"
         with pytest.raises(ValueError, match="epoch_labels length"):
             animate_epochs_video(epoch_partitions, out, epoch_labels=["x"])
+
+
+# ── region_palette ────────────────────────────────────────────────────────────
+
+
+class TestRegionPalette:
+    @pytest.mark.parametrize("scheme", ["random", "frobenius", "spatial"])
+    def test_returns_one_color_per_region(self, simple_partition, scheme):
+        colors = region_palette(simple_partition, scheme=scheme)
+        assert len(colors) == len(simple_partition.regions)
+        assert all(isinstance(c, str) and c.startswith("rgb(") for c in colors)
+
+    def test_unknown_scheme_raises(self, simple_partition):
+        with pytest.raises(ValueError, match="unknown scheme"):
+            region_palette(simple_partition, scheme="not_a_scheme")
+
+    def test_plot_partition_2d_accepts_precomputed_colors(self, simple_partition):
+        from parx.viz import plot_partition_2d
+
+        colors = region_palette(simple_partition, scheme="random")
+        fig = plot_partition_2d(simple_partition, colors=colors)
+        assert isinstance(fig, go.Figure)
+        assert len(_polygon_traces(fig)) == len(simple_partition)
+
+
+# ── plot_feature_embedding ───────────────────────────────────────────────────
+
+
+@pytest.fixture
+def embedding_inputs(simple_partition):
+    """Synthetic penultimate-layer features + inputs routable through
+    simple_partition, sized for a valid (low) t-SNE perplexity."""
+    rng = np.random.default_rng(0)
+    X = rng.uniform(-1, 1, (30, 2))
+    features = rng.normal(size=(30, 5))
+    return features, simple_partition, X
+
+
+class TestPlotFeatureEmbedding:
+    def test_returns_figure_with_default_region_coloring(self, embedding_inputs):
+        pytest.importorskip("sklearn")
+        features, partition, X = embedding_inputs
+        fig = plot_feature_embedding(features, partition, X, perplexity=5)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_continuous_color_by_array_adds_colorbar(self, embedding_inputs):
+        pytest.importorskip("sklearn")
+        features, partition, X = embedding_inputs
+        values = np.linalg.norm(X, axis=1)
+        fig = plot_feature_embedding(
+            features, partition, X, color_by=values, perplexity=5
+        )
+        assert fig.data[0].marker.showscale is True
+
+    def test_umap_method(self, embedding_inputs):
+        pytest.importorskip("umap")
+        features, partition, X = embedding_inputs
+        fig = plot_feature_embedding(features, partition, X, method="umap")
+        assert isinstance(fig, go.Figure)
+
+    def test_unknown_method_raises(self, embedding_inputs):
+        features, partition, X = embedding_inputs
+        with pytest.raises(ValueError, match="unknown embedding method"):
+            plot_feature_embedding(features, partition, X, method="pca")
