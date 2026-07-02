@@ -28,7 +28,12 @@ from parx.network import extract_features, load_network
 from parx.partition import Partition
 from parx.precompile import precompile
 from parx.region import Region
-from parx.viz import animate_epochs, animate_epochs_video, plot_feature_embedding, region_palette
+from parx.viz import (
+    animate_epochs,
+    animate_epochs_video,
+    plot_feature_embedding,
+    region_palette,
+)
 
 check_julia()
 

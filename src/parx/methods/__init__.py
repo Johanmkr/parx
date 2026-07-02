@@ -34,8 +34,10 @@ class RegionFindResult:
     the activation pattern of layer ``l`` for region ``i``.
 
     The optional active-index fields are populated by exact methods only.
-    Region ``i`` owns rows ``active_indices_flat[active_offsets[i] : active_offsets[i+1]]``
-    of the halfspace system — 0-based row indices into ``D`` from ``Partition.halfspaces()``.
+    Region ``i`` owns rows
+    ``active_indices_flat[active_offsets[i] : active_offsets[i+1]]`` of the
+    halfspace system — 0-based row indices into ``D`` from
+    ``Partition.halfspaces()``.
     """
 
     patterns: np.ndarray  # (n_regions, total_bits)      int8

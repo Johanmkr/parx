@@ -194,15 +194,20 @@ def region_palette(partition: Partition, scheme: str = "random") -> list[str]:
     regions = partition.regions
     n = len(regions)
     if scheme == "random":
-        return list(px.colors.sample_colorscale("Turbo", [i / max(n - 1, 1) for i in range(n)]))
+        positions = [i / max(n - 1, 1) for i in range(n)]
+        return list(px.colors.sample_colorscale("Turbo", positions))
     if scheme == "frobenius":
-        metrics = np.array([affine_frobenius(partition, r) for r in regions], dtype=float)
+        metrics = np.array(
+            [affine_frobenius(partition, r) for r in regions], dtype=float
+        )
         span = metrics.max() - metrics.min()
         normed = (metrics - metrics.min()) / (span if span > 1e-12 else 1.0)
         return list(px.colors.sample_colorscale("Viridis", normed))
     if scheme == "spatial":
         return _spatial_colors(regions)
-    raise ValueError(f"unknown scheme {scheme!r}; choose 'random', 'frobenius', or 'spatial'")
+    raise ValueError(
+        f"unknown scheme {scheme!r}; choose 'random', 'frobenius', or 'spatial'"
+    )
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -1007,7 +1012,9 @@ def animate_epochs(
     if not partitions:
         return go.Figure()
     if any(p.input_dim != 2 for p in partitions):
-        raise ValueError("animate_epochs requires all partitions to have input_dim == 2")
+        raise ValueError(
+            "animate_epochs requires all partitions to have input_dim == 2"
+        )
 
     labels = epoch_labels or [str(i) for i in range(len(partitions))]
     if len(labels) != len(partitions):
@@ -1255,12 +1262,11 @@ def animate_epochs_video(
         If ``matplotlib`` is not installed.
     """
     try:
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as mpatches
-        import matplotlib.colorbar as mcolorbar
         import matplotlib as _mpl
         import matplotlib.cm as mcm
         import matplotlib.colors as mcolors
+        import matplotlib.patches as mpatches
+        import matplotlib.pyplot as plt
         from matplotlib.animation import FuncAnimation
     except ImportError as e:
         raise ImportError(
@@ -1440,7 +1446,10 @@ def plot_feature_embedding(
 
     fig = go.Figure()
 
-    if isinstance(color_by, list) or (isinstance(color_by, str) and color_by == "region"):
+    is_region_palette = isinstance(color_by, list) or (
+        isinstance(color_by, str) and color_by == "region"
+    )
+    if is_region_palette:
         # Per-region discrete palette: either pre-computed list[str] or Turbo by index.
         n_regions = len(partition.regions)
         routed_mask = region_ids >= 0
