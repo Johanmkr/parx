@@ -29,7 +29,7 @@ def ensure_julia():
 
     from juliacall import Main as jl
 
-    julia_file = Path(__file__).parent / "julia" / "LinearRegions.jl"
+    julia_file = Path(__file__).parent / "julia" / "src" / "LinearRegions.jl"
     jl.seval(f'include("{julia_file.as_posix()}")')
 
     _jl = jl
