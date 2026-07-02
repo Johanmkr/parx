@@ -1217,6 +1217,7 @@ def plot_halfspaces(
     region: Region,
     x_range: tuple[float, float] = (-2.0, 2.0),
     y_range: tuple[float, float] = (-2.0, 2.0),
+    *,
     backend: Literal["plotly", "matplotlib"] = "plotly",
 ) -> go.Figure | matplotlib.figure.Figure:
     """Draw the halfspace boundaries that define a single region.
