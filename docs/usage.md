@@ -41,7 +41,7 @@ The primary research use case: compute the partition at multiple checkpoints and
 partitions = []
 labels = []
 
-for epoch, state_dict in parx.iter_state_dicts("checkpoints/"):
+for epoch, state_dict in parx.iter_state_dicts("checkpoints.h5"):
     p = parx.compute_partition(state_dict, X, method="sparse_julia")
     partitions.append(p)
     labels.append(epoch)
