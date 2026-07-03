@@ -13,7 +13,7 @@
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourname/parx
+git clone https://github.com/Johanmkr/parx
 cd parx
 ```
 
@@ -59,11 +59,15 @@ parx/
 ├── docs/                        # docs site content (see "Docs site" below)
 ├── tests/
 │   ├── conftest.py
+│   ├── test_analysis.py
+│   ├── test_diagnostics.py
+│   ├── test_io.py
+│   ├── test_io_partition.py
 │   ├── test_julia_bridge.py
 │   ├── test_methods.py
+│   ├── test_mlp.py
 │   ├── test_network.py
 │   ├── test_partition.py
-│   ├── test_io.py
 │   ├── test_verify.py
 │   └── test_viz.py
 └── src/
