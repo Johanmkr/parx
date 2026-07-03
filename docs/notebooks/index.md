@@ -2,7 +2,7 @@
 
 Two marimo notebooks walk the public API end-to-end using a single running example: a small classifier trained on the **two-moons** dataset. Both compute the **sparse** and **exact** partitions **before, during, and after training**, look at the partition **layer by layer**, and animate the full training run — then continue into inspecting a `Partition`, analysis/verification functions, a higher-dimensional example, and save/reload. The only difference between them is the plotting backend.
 
-A third notebook asks a more specific question: do linear regions survive into feature space? It projects hidden-layer activations to 2D with tSNE/UMAP and checks whether points from the same linear region cluster together, with an interactive architecture/layer picker.
+A third notebook asks a more specific question: do linear regions survive into feature-space? It projects hidden-layer activations to 2D with tSNE/UMAP and checks whether points from the same linear region cluster together, with an interactive architecture/layer picker.
 
 These are static, pre-exported snapshots (`marimo export html`) rather than live notebooks — `parx` depends on Julia and PyTorch, neither of which run inside a browser sandbox, so a fully interactive in-browser version isn't possible here. To run any notebook live and edit it, clone the repo and run:
 
