@@ -7,7 +7,8 @@ name = "parx"
 version = "0.1.0"
 description = "POLyhedral Activation Region Xplorer: exact enumeration of linear regions in ReLU neural networks"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Johan Mylius-Kroken", email = "johan.m.kroken@gmail.com" }
 ]
@@ -26,7 +27,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Mathematics",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -46,6 +46,7 @@ dependencies = [
 h5 = ["h5py>=3.8"]
 animate = ["matplotlib>=3.5"]
 embed = ["umap-learn>=0.5"]
+analysis = ["scikit-learn>=1.3"]
 docs = ["mkdocs>=1.6", "mkdocs-material>=9.5"]
 dev = [
     "pytest>=7.0",

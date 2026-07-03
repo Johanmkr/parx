@@ -1,5 +1,10 @@
 # parx — Polyhedral Affine Region eXplorer
 
+[![CI](https://github.com/Johanmkr/parx/actions/workflows/ci.yml/badge.svg)](https://github.com/Johanmkr/parx/actions/workflows/ci.yml)
+[![Docs](https://github.com/Johanmkr/parx/actions/workflows/docs.yml/badge.svg)](https://github.com/Johanmkr/parx/actions/workflows/docs.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](pyproject.toml)
+
 parx exactly enumerates and analyzes the linear (polyhedral activation) regions of ReLU neural networks.
 
 - **Python layer:** network loading, user API, analysis, visualization, serialization
@@ -263,7 +268,7 @@ Julia threads default to all available cores; override with `JULIA_NUM_THREADS`.
 
 ## License
 
-MIT. See [LICENCE](LICENCE).
+MIT. See [LICENSE](LICENSE).
 
 ---
 

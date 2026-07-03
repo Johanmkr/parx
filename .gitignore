@@ -50,6 +50,9 @@ examples/output/
 
 # marimo
 __marimo__/
+.marimo_agent_state.json
+layouts/
+project_overview.py
 
 # MkDocs
 site/
