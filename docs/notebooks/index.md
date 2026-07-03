@@ -26,6 +26,6 @@ Interactive figures with hover tooltips; the training animation has a play/pause
 
 ## Feature-space embedding
 
-Do linear regions survive into feature space? Projects hidden-layer activations down to 2D with tSNE/UMAP and colors points by which linear region they belong to, across a selectable architecture and extraction layer.
+Do linear regions survive into feature-space? Projects hidden-layer activations down to 2D with tSNE/UMAP and colors points by which linear region they belong to, across a selectable architecture and extraction layer.
 
 <iframe src="feature_embedding.html" style="width: 100%; height: 1400px; border: 0;" title="parx demo notebook — feature-space embedding"></iframe>
