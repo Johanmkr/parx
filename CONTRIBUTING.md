@@ -138,11 +138,12 @@ mkdocs serve      # live preview at http://127.0.0.1:8000
 mkdocs build --strict   # what CI runs; fails on broken nav/links
 ```
 
-The two demo notebooks are embedded on the Notebooks page as pre-exported static HTML (`docs/notebooks/demo_plt.html`, `docs/notebooks/demo_plotly.html`) — the docs build itself has no Julia/PyTorch dependency, so this export step is manual. **After editing either `notebooks/demo_plt.py` or `notebooks/demo_plotly.py`, re-export before committing:**
+The three demo notebooks are embedded on the Notebooks page as pre-exported static HTML (`docs/notebooks/demo_plt.html`, `docs/notebooks/demo_plotly.html`, `docs/notebooks/feature_embedding.html`) — the docs build itself has no Julia/PyTorch dependency, so this export step is manual. **After editing any of `notebooks/demo_plt.py`, `notebooks/demo_plotly.py`, or `notebooks/feature_embedding.py`, re-export before committing:**
 
 ```bash
 marimo export html notebooks/demo_plt.py -o docs/notebooks/demo_plt.html
 marimo export html notebooks/demo_plotly.py -o docs/notebooks/demo_plotly.html
+marimo export html notebooks/feature_embedding.py -o docs/notebooks/feature_embedding.html
 ```
 
 ---
