@@ -292,6 +292,8 @@ def region_palette(partition: Partition, scheme: str = "random") -> list[str]:
         ``'spatial'`` — HSV colour keyed to centroid angle (hue) and
         radial distance from the mean centroid (saturation).
 
+    Notes
+    -----
     Returned CSS strings work as the ``colors=`` argument of
     :func:`plot_partition_2d` under either ``backend`` — the matplotlib path
     converts them internally.

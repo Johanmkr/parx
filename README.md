@@ -14,7 +14,7 @@ parx exactly enumerates and analyzes the linear (polyhedral activation) regions 
 
 **Docs site:** [johanmkr.github.io/parx](https://johanmkr.github.io/parx/) — includes the two demo notebooks below, rendered and browsable without cloning the repo.
 
-For a conceptual introduction — what parx computes, how sparse vs. exact enumeration differ, the data pipeline, workflow examples, and current limitations — see **[OVERVIEW.md](OVERVIEW.md)** (also on the docs site).
+For a conceptual introduction — what parx computes, how sparse vs. exact enumeration differ, the data pipeline, workflow examples, and current limitations — see **[OVERVIEW.md](OVERVIEW.md)**, or the same material split across the docs site's **[Concepts](https://johanmkr.github.io/parx/concepts/)** and **[Usage](https://johanmkr.github.io/parx/usage/)** pages.
 
 ## What parx computes
 
@@ -38,15 +38,23 @@ curl -fsSL https://install.julialang.org | sh
 
 ## Installation
 
+Not yet on PyPI (see [road2publish.md](road2publish.md)) — install from source:
+
 ```bash
-pip install parx
+git clone https://github.com/Johanmkr/parx
+cd parx
+pip install -e .
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev-environment setup.
 
 Optional extras:
 
 ```bash
-pip install "parx[h5]"        # HDF5 model files (.h5)
-pip install "parx[analysis]"  # PCA-based visualization (scikit-learn)
+pip install -e ".[h5]"        # HDF5 model files (.h5)
+pip install -e ".[animate]"   # matplotlib backend + video export
+pip install -e ".[embed]"     # UMAP-based feature embedding
+pip install -e ".[analysis]"  # PCA-based visualization (scikit-learn)
 ```
 
 ## Quick start
@@ -256,6 +264,8 @@ src/parx/
 Julia threads default to all available cores; override with `JULIA_NUM_THREADS`.
 
 ## Citation
+
+Citation metadata is also available in [`CITATION.cff`](CITATION.cff) (used by GitHub's "Cite this repository" button).
 
 ```bibtex
 @software{parx,

@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "parx: Polyhedral Affine Region eXplorer"
+abstract: >-
+  Exact enumeration and analysis of the linear (polyhedral activation)
+  regions of ReLU neural networks. A Python API layered over a Julia
+  backend for the combinatorially intensive region-finding algorithms.
+type: software
+version: 0.1.0
+date-released: "2026-07-03"
+license: MIT
+repository-code: "https://github.com/Johanmkr/parx"
+url: "https://github.com/Johanmkr/parx"
+authors:
+  - family-names: "Mylius-Kroken"
+    given-names: "Johan"
+    email: johan.m.kroken@gmail.com
+keywords:
+  - neural networks
+  - linear regions
+  - polyhedral
+  - ReLU
+  - piecewise linear
+  - affine
+  - interpretability
+  - geometry
+# identifiers:
+#   - type: doi
+#     value: 10.5281/zenodo.XXXXXXX
+#     description: Zenodo archive of this repository (added once a DOI exists — see road2publish.md Phase 4)

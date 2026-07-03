@@ -29,6 +29,7 @@ class Region:
 
     @property
     def n_layers(self) -> int:
+        """Number of hidden layers spanned by this region's activation path."""
         return len(self.activation_path)
 
     def __repr__(self) -> str:
