@@ -12,9 +12,10 @@ license: MIT
 repository-code: "https://github.com/Johanmkr/parx"
 url: "https://github.com/Johanmkr/parx"
 authors:
-  - family-names: "Mylius-Kroken"
-    given-names: "Johan"
+  - family-names: Mylius-Kroken
+    given-names: Johan
     email: johan.m.kroken@gmail.com
+    orcid: https://orcid.org/0009-0005-8580-372X
 keywords:
   - neural networks
   - linear regions
