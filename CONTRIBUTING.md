@@ -54,7 +54,8 @@ parx/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml               # GitHub Actions CI
-│       └── docs.yml             # builds & deploys the docs site to GitHub Pages
+│       ├── docs.yml             # builds & deploys the docs site to GitHub Pages
+│       └── release.yml          # builds + publishes to PyPI on GitHub Release (see RELEASING.md)
 ├── mkdocs.yml                   # docs site config
 ├── docs/                        # docs site content (see "Docs site" below)
 ├── tests/
@@ -205,6 +206,12 @@ export PYTHON_JULIAPKG_EXE="$HOME/.julia/juliaup/julia-1.10.11+0.x64.linux.gnu/b
 (matching the Julia 1.10 that CI and `src/parx/julia/Manifest.toml` are pinned to is the safest bet — a newer version may work but isn't what's tested). Then delete any stale resolution and retry: `rm -rf .venv/julia_env`. If you had to do this, please open an issue — it means the auto-detection missed a case and should be taught about it.
 
 If you'd rather not hardcode a version path, `export PYTHON_JULIAPKG_OFFLINE=yes` also avoids the buggy auto-upgrade path (it makes juliapkg reuse the newest **already-installed** juliaup version instead of trying to fetch a new one) — simpler, but it may still land you on a newer, less-tested Julia than pinning to 1.10 would.
+
+---
+
+## Releasing
+
+See [RELEASING.md](RELEASING.md) for how to cut a new version and what the automation does from there.
 
 ---
 
