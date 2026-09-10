@@ -43,10 +43,12 @@ Not yet on PyPI (see [road2publish.md](road2publish.md)) — install from source
 ```bash
 git clone https://github.com/Johanmkr/parx
 cd parx
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
 pip install -e .
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev-environment setup.
+(or `uv venv && source .venv/bin/activate && uv pip install -e .` with [uv](https://github.com/astral-sh/uv).) See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev-environment setup.
 
 Optional extras:
 
@@ -158,14 +160,14 @@ for epoch, state_dict in iter_state_dicts("checkpoints/"):
     ...
 
 # Animated Plotly figure showing how the partition evolves
-fig = animate_epochs(partitions, domain=((-1, 1), (-1, 1)))
+fig = animate_epochs(partitions, x_range=(-1, 1), y_range=(-1, 1))
 fig.show()
 
 # Matplotlib FuncAnimation instead — no slider, but playable via .to_jshtml()
 anim = animate_epochs(partitions, backend="matplotlib")
 
 # Export to MP4/GIF
-animate_epochs_video(partitions, domain=((-1, 1), (-1, 1)), path="partition.gif")
+animate_epochs_video(partitions, "partition.gif", x_range=(-1, 1), y_range=(-1, 1))
 ```
 
 ### Verification

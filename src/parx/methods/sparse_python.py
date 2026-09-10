@@ -19,7 +19,25 @@ def find(
     data: np.ndarray,
     **_: object,
 ) -> RegionFindResult:
-    """Discover only regions that contain at least one point from ``data``."""
+    """Discover only regions that contain at least one point from ``data``.
+
+    Parameters
+    ----------
+    weights, biases:
+        Per-layer weight/bias arrays (as returned by
+        :func:`parx.network.load_network`).
+    data : np.ndarray
+        Sample points, shape ``(N, input_dim)``.
+    **_ :
+        Ignored — accepted so every method shares one call signature.
+
+    Returns
+    -------
+    RegionFindResult
+        ``patterns``, ``offsets``, and ``centroids`` only; the active-index
+        and boundedness fields are left ``None`` (sparse methods don't run
+        the LPs needed to compute them).
+    """
     X = np.asarray(data, dtype=np.float64)
     if X.ndim != 2:
         raise ValueError(f"data must be 2-D (N, input_dim); got shape {X.shape}")
