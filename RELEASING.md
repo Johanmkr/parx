@@ -61,7 +61,7 @@ The only manual bump is cosmetic: `CITATION.cff`'s `version:` and `date-released
 5. **Verify:**
 
    ```bash
-   curl -s "https://pypi.org/pypi/parx/vX.Y.Z/json" | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])"
+curl -s "https://pypi.org/pypi/parx/X.Y.Z/json" | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])"
    ```
 
    Use the **version-specific** endpoint (`/pypi/parx/X.Y.Z/json`), not the aggregate `/pypi/parx/json` — the latter's "latest version" field can lag the real upload by several minutes on some CDN edges right after a fresh publish.
