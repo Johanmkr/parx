@@ -36,6 +36,8 @@ Install Julia via [juliaup](https://github.com/JuliaLang/juliaup):
 curl -fsSL https://install.julialang.org | sh
 ```
 
+> parx works around a known `juliapkg`/juliaup interaction automatically. If the first thing that touches Julia (any `*_julia`/`exact_julia*` method, or `pytest`) still fails with `could not load library ".../juliaup/bin/../lib/julia/sys.so"`, see [CONTRIBUTING.md's Troubleshooting section](CONTRIBUTING.md#troubleshooting) for the one-line manual fix.
+
 ## Installation
 
 Not yet on PyPI (see [road2publish.md](road2publish.md)) — install from source:
