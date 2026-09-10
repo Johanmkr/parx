@@ -40,7 +40,22 @@ curl -fsSL https://install.julialang.org | sh
 
 ## Installation
 
-Not yet on PyPI — install from source:
+```bash
+pip install parx
+```
+
+Requires [Julia](https://julialang.org/) ≥ 1.10 on `PATH` (the package raises a clear `RuntimeError` with install instructions if it's missing). The first thing that touches Julia in a process (any `*_julia`/`exact_julia*` method, or `parx.precompile()`) triggers a one-time download + precompile of the Julia environment, which can take a few minutes; subsequent runs reuse the cached depot and start instantly.
+
+Optional extras:
+
+```bash
+pip install "parx[h5]"        # HDF5 model files (.h5)
+pip install "parx[animate]"   # matplotlib backend + video export
+pip install "parx[embed]"     # UMAP-based feature embedding
+pip install "parx[analysis]"  # PCA-based visualization (scikit-learn)
+```
+
+To install from source instead (for development, or to track `main`):
 
 ```bash
 git clone https://github.com/Johanmkr/parx
@@ -51,15 +66,6 @@ pip install -e .
 ```
 
 (or `uv venv && source .venv/bin/activate && uv pip install -e .` with [uv](https://github.com/astral-sh/uv).) See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev-environment setup.
-
-Optional extras:
-
-```bash
-pip install -e ".[h5]"        # HDF5 model files (.h5)
-pip install -e ".[animate]"   # matplotlib backend + video export
-pip install -e ".[embed]"     # UMAP-based feature embedding
-pip install -e ".[analysis]"  # PCA-based visualization (scikit-learn)
-```
 
 ## Quick start
 
