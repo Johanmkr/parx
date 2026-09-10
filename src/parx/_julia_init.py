@@ -35,11 +35,19 @@ def _resolve_juliaup_shim() -> str | None:
     if julia_on_path is None:
         return None
 
-    # juliaup's shim is a symlink/copy of a binary literally named
-    # "julialauncher"; a plain (non-juliaup) Julia install is not.
+    # juliaup's shim is typically a symlink to a binary literally named
+    # "julialauncher"; a plain (non-juliaup) Julia install is not. Some
+    # installs may ship a separate "julia" launcher alongside "julialauncher",
+    # so also accept a sibling julialauncher in the same directory.
     real_target = os.path.realpath(julia_on_path)
-    if os.path.basename(real_target) not in ("julialauncher", "julialauncher.exe"):
-        return None
+    launcher_names = ("julialauncher", "julialauncher.exe")
+    if os.path.basename(real_target) not in launcher_names:
+        shim_dir = os.path.dirname(julia_on_path)
+        ext = ".exe" if os.name == "nt" else ""
+        candidate = os.path.join(shim_dir, "julialauncher" + ext)
+        if not os.path.isfile(candidate):
+            return None
+        real_target = candidate
 
     # juliaup does not follow JULIA_DEPOT_PATH, but defines its own
     # override for ~/.julia (matches juliapkg's own lookup).
