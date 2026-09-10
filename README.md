@@ -40,7 +40,7 @@ curl -fsSL https://install.julialang.org | sh
 
 ## Installation
 
-Not yet on PyPI (see [road2publish.md](road2publish.md)) — install from source:
+Not yet on PyPI — install from source:
 
 ```bash
 git clone https://github.com/Johanmkr/parx
