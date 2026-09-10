@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/Johanmkr/parx/actions/workflows/ci.yml/badge.svg)](https://github.com/Johanmkr/parx/actions/workflows/ci.yml)
 [![Docs](https://github.com/Johanmkr/parx/actions/workflows/docs.yml/badge.svg)](https://github.com/Johanmkr/parx/actions/workflows/docs.yml)
+[![PyPI](https://img.shields.io/pypi/v/parx.svg)](https://pypi.org/project/parx/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](pyproject.toml)
 
