@@ -70,9 +70,9 @@ where = ["src"]
 
 # --- Version derived from git tags (setuptools-scm) ---
 # A tag `vX.Y.Z` on `main` becomes version `X.Y.Z`; untagged commits get a
-# `.devN+gHASH`-style version so editable/dev installs are still distinguishable.
-# `local_scheme = "no-local-version"` drops the `+gHASH` suffix specifically for
-# sdists/wheels built for upload, since PyPI rejects local version segments.
+# `.devN`-style version so editable/dev installs are still distinguishable.
+# `local_scheme = "no-local-version"` omits the `+...` local version segment,
+# which keeps versions PyPI-compatible (PyPI rejects local version segments).
 [tool.setuptools_scm]
 version_scheme = "no-guess-dev"
 local_scheme = "no-local-version"
