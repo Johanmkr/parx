@@ -5,6 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/parx.svg)](https://pypi.org/project/parx/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](pyproject.toml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22696450.svg)](https://doi.org/10.5281/zenodo.22696450)
 
 parx exactly enumerates and analyzes the linear (polyhedral activation) regions of ReLU neural networks.
 
@@ -276,6 +277,8 @@ Julia threads default to all available cores; override with `JULIA_NUM_THREADS`.
 
 ## Citation
 
+Archived on Zenodo: [10.5281/zenodo.22696450](https://doi.org/10.5281/zenodo.22696450) — this concept DOI always resolves to the latest release; each tagged version also gets its own version-specific DOI.
+
 Citation metadata is also available in [`CITATION.cff`](CITATION.cff) (used by GitHub's "Cite this repository" button).
 
 ```bibtex
@@ -283,7 +286,8 @@ Citation metadata is also available in [`CITATION.cff`](CITATION.cff) (used by G
   author = {Johan Mylius-Kroken},
   title  = {parx — Polyhedral Affine Region eXplorer},
   year   = {2026},
-  url    = {https://github.com/Johanmkr/parx}
+  url    = {https://github.com/Johanmkr/parx},
+  doi    = {10.5281/zenodo.22696450}
 }
 ```
 
@@ -295,7 +299,7 @@ MIT. See [LICENSE](LICENSE).
 
 ## Future directions
 
-The core enumeration and analysis pipeline is complete. For a concrete, prioritized task list with implementation detail see **[TODO.md](TODO.md)**. High-level directions:
+The core enumeration and analysis pipeline is complete. High-level directions:
 
 ### Non-sequential architectures
 

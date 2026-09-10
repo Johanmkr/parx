@@ -113,7 +113,7 @@ benchmark_method(model, X, method="sparse_julia")  # timing comparison
 
 ## Limitations
 
-These are current constraints, not design goals. See the project's [TODO.md](https://github.com/Johanmkr/parx/blob/main/TODO.md) for planned extensions.
+These are current constraints, not design goals.
 
 **Architecture support:** Only sequential `Linear → ReLU` stacks. ResNets, transformers, CNNs, networks with batch normalization or dropout, and any model with branching structure are not supported.
 
