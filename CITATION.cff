@@ -6,8 +6,8 @@ abstract: >-
   regions of ReLU neural networks. A Python API layered over a Julia
   backend for the combinatorially intensive region-finding algorithms.
 type: software
-version: 0.1.0
-date-released: "2026-07-03"
+version: 0.1.2
+date-released: "2026-09-10"
 license: MIT
 repository-code: "https://github.com/Johanmkr/parx"
 url: "https://github.com/Johanmkr/parx"
@@ -25,7 +25,9 @@ keywords:
   - affine
   - interpretability
   - geometry
-# identifiers:
-#   - type: doi
-#     value: 10.5281/zenodo.XXXXXXX
-#     description: Zenodo archive of this repository (added once a DOI exists — see road2publish.md Phase 4)
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22696450
+    description: >-
+      Concept DOI (Zenodo) — always resolves to the latest archived
+      release of this repository.
