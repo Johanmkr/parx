@@ -29,6 +29,9 @@ htmlcov/
 *.jl.mem
 /depot/
 
+# Local packaging/release working notes — not meant for the public repo
+/road2publish.md
+
 # Claude Code
 .claude/
 CLAUDE.md

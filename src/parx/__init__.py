@@ -6,6 +6,9 @@ Exactly enumerates the linear regions of ReLU neural networks.
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
 import numpy as np
 
 from parx import (
@@ -37,7 +40,11 @@ from parx.viz import (
 
 check_julia()
 
-__version__ = "0.1.0"
+try:
+    __version__ = _pkg_version("parx")
+except PackageNotFoundError:  # pragma: no cover - source tree, not installed
+    __version__ = "0.0.0+unknown"
+
 __all__ = [
     "__version__",
     "always_active_neurons",

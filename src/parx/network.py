@@ -76,8 +76,9 @@ def extract_features(
     handle = target.register_forward_hook(_hook)
     try:
         model.eval()
+        device = next(model.parameters()).device
         with torch.no_grad():
-            tensor = torch.tensor(X, dtype=torch.float32)
+            tensor = torch.tensor(X, dtype=torch.float32, device=device)
             model(tensor)
     finally:
         handle.remove()

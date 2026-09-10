@@ -180,7 +180,31 @@ For packages needed at runtime, edit `src/parx/juliapkg.json` and commit that fi
 | Variable | Default | Description |
 |---|---|---|
 | `JULIA_NUM_THREADS` | `"auto"` | Number of Julia threads |
-| `PYTHON_JULIACALL_HANDLE_SIGNALS` | `"yes"` | Suppress harmless segfault at exit when Julia threads are active |
+| `PYTHON_JULIACALL_HANDLE_SIGNALS` | `"yes"` | Makes the harmless segfault at exit (when Julia threads are active) happen cleanly after results are already reported, instead of during teardown. It does not prevent the segfault itself — if you see one, check the run's actual output/exit status first; a `"N passed"` line means the run succeeded despite it. |
+| `PYTHON_JULIAPKG_EXE` | auto-detected on juliaup (see below) | Force juliacall to use a specific Julia binary instead of auto-resolving one. |
+
+---
+
+## Troubleshooting
+
+### `ERROR: could not load library ".../juliaup/bin/../lib/julia/sys.so": ... No such file or directory`
+
+This used to happen on the **first** call that touches Julia (`ensure_julia()`, any `*_julia`/`exact_julia*` method, or the `julia_session` pytest fixture) on a machine where Julia was installed via [juliaup](https://github.com/JuliaLang/juliaup) — i.e. exactly the install method this repo recommends. **`parx` now works around it automatically** (`_julia_init.py::_resolve_juliaup_shim`) — read on for what it does and what to do if you still hit this.
+
+**Cause:** `julia` on `PATH` is juliaup's launcher shim (`~/.juliaup/bin/julia`), not a real Julia install — juliaup keeps the actual per-version binaries elsewhere (`~/.julia/juliaup/julia-<version>+.../`). `juliapkg` tries to auto-upgrade to the newest Julia release on every resolve; when that opportunistic install fails (network hiccup, a not-yet-fully-available release, etc.) it silently falls back to the raw shim path instead of one of your already-installed, perfectly good Julia versions, and juliacall then derives the system-image path relative to the shim's directory — which never has a `lib/julia/sys.so` next to it. This is a `juliapkg` bug, not a `parx` one; it's invisible in CI because CI installs Julia directly (`julia-actions/setup-julia@v2`), never through juliaup.
+
+**The automatic fix:** before `juliacall` is ever imported, `ensure_julia()` checks whether `julia` on `PATH` resolves to a juliaup launcher shim (`os.path.realpath` ends in `julialauncher`). If so, it reads `~/.julia/juliaup/juliaup.json` directly to find the real binary behind juliaup's *default* channel, and sets `PYTHON_JULIAPKG_EXE` to that real path (via `os.environ.setdefault`, so it never overrides an explicit value you've already set) — juliapkg then uses that binary directly instead of falling back to the broken shim path. Confirmed end-to-end: a from-scratch clone + `uv venv` + `pip install -e ".[dev]"` + `pytest`, with **zero manual env vars**, now passes cleanly (`219 passed`).
+
+**If it still happens anyway** (e.g. juliaup's on-disk metadata format has changed since this was written, or you're using something other than juliaup — a container image with a hand-rolled Julia install, `asdf`, etc.), the detection silently no-ops and you're back to the original failure. Fall back to pointing juliacall at a known-good binary yourself:
+
+```bash
+juliaup list                                    # see what's installed, e.g. 1.10.11+0.x64.linux.gnu
+export PYTHON_JULIAPKG_EXE="$HOME/.julia/juliaup/julia-1.10.11+0.x64.linux.gnu/bin/julia"
+```
+
+(matching the Julia 1.10 that CI and `src/parx/julia/Manifest.toml` are pinned to is the safest bet — a newer version may work but isn't what's tested). Then delete any stale resolution and retry: `rm -rf .venv/julia_env`. If you had to do this, please open an issue — it means the auto-detection missed a case and should be taught about it.
+
+If you'd rather not hardcode a version path, `export PYTHON_JULIAPKG_OFFLINE=yes` also avoids the buggy auto-upgrade path (it makes juliapkg reuse the newest **already-installed** juliaup version instead of trying to fetch a new one) — simpler, but it may still land you on a newer, less-tested Julia than pinning to 1.10 would.
 
 ---
 

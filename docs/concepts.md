@@ -45,7 +45,7 @@ This is the most important choice a user makes. The two strategies have fundamen
 
 ### Sparse enumeration — `method="sparse_julia"` or `"sparse_python"`
 
-**What it does:** Runs a forward pass on every point in `X`. Each point lands in one region (its activation pattern). The result is the set of distinct patterns seen across all `N` points, one region per pattern, with the centroid set to the mean of all points in that pattern.
+**What it does:** Runs a forward pass on every point in `X`. Each point lands in one region (its activation pattern). The result is the set of distinct patterns seen across all `N` points, one region per pattern, with the centroid set to the *first* data point observed for that pattern (not an average — just a cheap, guaranteed-feasible interior point).
 
 **What you get:** Only the regions that your data points happened to land in. If a region is small, low-density, or simply not covered by your sample, it will not appear in the partition.
 
@@ -98,6 +98,8 @@ partition = compute_partition(model, x0, method="exact_julia")
 | `centroid` | `np.ndarray` shape `(input_dim,)` | An interior point (Chebyshev center) |
 | `active_indices` | `np.ndarray[int32]` or `None` | Non-redundant constraint row indices (exact only) |
 | `bounded` | `bool` | Whether the polytope is bounded (exact only) |
+
+Boundedness is decided via a Chebyshev-center LP (`parx._lp.chebyshev_center`) that caps the search radius at `max_radius` (default `1e3`) — the LP can't return a literally-infinite radius, so it's given a large-but-finite box to search within instead. A region is `bounded=False` when its true radius is unbounded *or* merely larger than `max_radius`; either way, `region.centroid` is still a valid interior point. Functions that estimate region size (`region_chebyshev_radii`, `region_volume_estimate`, `partition_volume_estimates` in [`analysis.py`](reference.md)) expose the same `max_radius` keyword — a radius at or near that value is a signal the region is unbounded (or just very large), not a precise measurement.
 
 ### `Partition` methods
 

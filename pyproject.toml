@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "parx"
-version = "0.1.0"
+dynamic = ["version"]
 description = "POLyhedral Activation Region Xplorer: exact enumeration of linear regions in ReLU neural networks"
 readme = "README.md"
 license = "MIT"
@@ -67,6 +67,15 @@ Issues = "https://github.com/Johanmkr/parx/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# --- Version derived from git tags (setuptools-scm) ---
+# A tag `vX.Y.Z` on `main` becomes version `X.Y.Z`; untagged commits get a
+# `.devN`-style version so editable/dev installs are still distinguishable.
+# `local_scheme = "no-local-version"` omits the `+...` local version segment,
+# which keeps versions PyPI-compatible (PyPI rejects local version segments).
+[tool.setuptools_scm]
+version_scheme = "no-guess-dev"
+local_scheme = "no-local-version"
 
 [tool.setuptools.package-data]
 parx = ["julia/*", "julia/src/*", "juliapkg.json"]
