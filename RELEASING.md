@@ -18,7 +18,7 @@ Nothing to bump by hand. `pyproject.toml` uses `setuptools-scm` (`dynamic = ["ve
 - Checked out exactly on tag `vX.Y.Z` → version is exactly `X.Y.Z`.
 - Any commit after a tag → `X.Y.Z.postN.devM` (`version_scheme = "no-guess-dev"` — it never guesses the *next* version).
 
-The only manual bump is cosmetic: `CITATION.cff`'s `version:` and `date-released:` fields aren't derived from anything and should be updated to match, if you want "Cite this repository" to show the current version.
+`CITATION.cff`'s `version:` and `date-released:` fields still aren't derived from anything, but for normal `vX.Y.Z` releases the workflow now updates them automatically after a successful publish. Only touch `CITATION.cff` by hand if that post-publish step fails and you need to repair it.
 
 ## Cutting a release
 
