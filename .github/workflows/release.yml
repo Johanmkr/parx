@@ -54,3 +54,40 @@ jobs:
 
       - name: Publish to PyPI
         run: uv publish --trusted-publishing always
+
+  update-citation:
+    name: Bump CITATION.cff
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to commit CITATION.cff back to main
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # release events default to checking out the tag; we want to commit onto main.
+          ref: main
+
+      - name: Update version and date-released
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          PUBLISHED_AT: ${{ github.event.release.published_at }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag '$TAG' isn't a plain vX.Y.Z release; skipping CITATION.cff bump."
+            exit 0
+          fi
+          VERSION="${TAG#v}"
+          DATE="${PUBLISHED_AT%%T*}"
+          sed -i "s/^version: .*/version: ${VERSION}/" CITATION.cff
+          sed -i "s/^date-released: .*/date-released: \"${DATE}\"/" CITATION.cff
+
+          if git diff --quiet -- CITATION.cff; then
+            echo "CITATION.cff already up to date; nothing to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CITATION.cff
+          git commit -m "chore: bump CITATION.cff to ${TAG} [skip ci]"
+          git push origin HEAD:main

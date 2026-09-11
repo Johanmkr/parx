@@ -12,6 +12,11 @@ once it reaches 1.0.
 - `RELEASING.md`, documenting the actual release process end-to-end (one-time
   infrastructure reference, versioning, step-by-step tag/release/approve/verify,
   gotchas hit in practice, pre-release checklist).
+- `release.yml`: a new `update-citation` job that runs after a successful
+  PyPI publish, bumping `CITATION.cff`'s `version:`/`date-released:` to
+  match the release tag and committing it straight to `main`. This was
+  previously a manual step on the pre-release checklist — easy to forget,
+  since it's the one release artifact `setuptools-scm` doesn't touch.
 
 ### Fixed
 - `docs.yml` never rebuilt/redeployed the docs site on a GitHub Release —
