@@ -65,6 +65,7 @@ parx/
 │   ├── test_io.py
 │   ├── test_io_partition.py
 │   ├── test_julia_bridge.py
+│   ├── test_julia_init.py
 │   ├── test_methods.py
 │   ├── test_mlp.py
 │   ├── test_network.py
@@ -80,6 +81,7 @@ parx/
         ├── network.py          # network loading (.pth, .h5)
         ├── region.py           # Region dataclass
         ├── partition.py        # Partition object + halfspaces/route/filter
+        ├── analysis.py         # neuron stats, complexity profile, volume estimation
         ├── methods/            # region-finding backends
         │   ├── __init__.py
         │   ├── sparse_julia.py
@@ -88,8 +90,11 @@ parx/
         │   ├── sparse_python.py
         │   └── exact_python.py
         ├── io.py               # iter_state_dicts helper
+        ├── io_partition.py     # save_partition / load_partition (.npz)
         ├── verify.py           # overlap/coverage checks
         ├── viz.py              # Plotly (default) / matplotlib visualizations
+        ├── diagnostics.py      # thread_info, benchmark_method
+        ├── precompile.py       # Julia JIT warm-up
         ├── juliapkg.json       # Julia runtime dependencies (for juliacall/juliapkg)
         └── julia/
             ├── LinearRegions.jl
@@ -97,6 +102,7 @@ parx/
             ├── sparse.jl
             ├── exact.jl
             ├── lp.jl
+            ├── self_test.jl    # standalone smoke test, no Python/juliacall involved
             ├── Project.toml    # standalone Julia environment (for direct Julia testing)
             └── Manifest.toml   # locked deps for standalone environment
 ```

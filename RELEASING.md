@@ -81,4 +81,5 @@ curl -s "https://pypi.org/pypi/parx/X.Y.Z/json" | python3 -c "import json,sys; p
 - [ ] Everything intended for this release is merged to `main`
 - [ ] `pytest` and `ruff check` are clean on `main` (CI already gates this on every PR, so normally already true)
 - [ ] `CITATION.cff`'s `version:`/`date-released:` updated if you want them accurate
+- [ ] `CHANGELOG.md`'s `[Unreleased]` section renamed to `[X.Y.Z] - <date>`, with a fresh empty `[Unreleased]` left above it for whatever comes next
 - [ ] Tag message says something meaningful (it becomes part of the permanent git history and the Zenodo record's metadata)
