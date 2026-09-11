@@ -8,6 +8,8 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-11
+
 ### Added
 - `RELEASING.md`, documenting the actual release process end-to-end (one-time
   infrastructure reference, versioning, step-by-step tag/release/approve/verify,
