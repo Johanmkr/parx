@@ -63,11 +63,12 @@ jobs:
       group: bump-citation-main
       cancel-in-progress: false
     permissions:
-      contents: write # to commit CITATION.cff back to main
+      contents: write # to push the automation branch with the CITATION.cff update
+      pull-requests: write # to open/update the CITATION.cff bump PR
     steps:
       - uses: actions/checkout@v4
         with:
-          # release events default to checking out the tag; we want to commit onto main.
+          # release events default to checking out the tag; we want to branch from main.
           ref: main
 
       - name: Update version and date-released
@@ -89,8 +90,12 @@ jobs:
             exit 0
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CITATION.cff
-          git commit -m "chore: bump CITATION.cff to ${TAG} [skip ci]"
-          git push origin HEAD:main
+      - name: Create CITATION.cff bump pull request
+        uses: peter-evans/create-pull-request@v7.0.11
+        with:
+          branch: automation/bump-citation
+          base: main
+          commit-message: "chore: bump CITATION.cff to ${{ github.event.release.tag_name }} [skip ci]"
+          title: "chore: bump CITATION.cff to ${{ github.event.release.tag_name }}"
+          body: |
+            Automated CITATION.cff metadata update after publishing `${{ github.event.release.tag_name }}`.
