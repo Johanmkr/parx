@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "parx"
 dynamic = ["version"]
-description = "POLyhedral Activation Region Xplorer: exact enumeration of linear regions in ReLU neural networks"
+description = "Polyhedral Affine Region eXplorer: exact enumeration of linear regions in ReLU neural networks"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
