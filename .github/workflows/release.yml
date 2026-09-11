@@ -59,6 +59,9 @@ jobs:
     name: Bump CITATION.cff
     needs: publish
     runs-on: ubuntu-latest
+    concurrency:
+      group: bump-citation-main
+      cancel-in-progress: false
     permissions:
       contents: write # to commit CITATION.cff back to main
     steps:
