@@ -93,7 +93,7 @@ jobs:
       - name: Create CITATION.cff bump pull request
         uses: peter-evans/create-pull-request@v7.0.11
         with:
-          branch: automation/bump-citation-${{ github.event.release.tag_name }}
+          branch: automation/bump-citation-release-${{ github.event.release.id }}
           base: main
           commit-message: "chore: bump CITATION.cff to ${{ github.event.release.tag_name }} [skip ci]"
           title: "chore: bump CITATION.cff to ${{ github.event.release.tag_name }}"
