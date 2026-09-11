@@ -33,7 +33,12 @@ jobs:
     name: Build MkDocs site
     runs-on: ubuntu-latest
     steps:
+      # `release` fires with github.ref pointing at the tag, not main — pin to main
+      # explicitly so a release published from an older/hotfix commit can't regress
+      # the (unversioned, "latest") docs site back to stale content.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && 'main' || github.ref }}
 
       - name: Configure GitHub Pages
         if: github.event_name != 'pull_request'
