@@ -18,7 +18,7 @@ Nothing to bump by hand. `pyproject.toml` uses `setuptools-scm` (`dynamic = ["ve
 - Checked out exactly on tag `vX.Y.Z` → version is exactly `X.Y.Z`.
 - Any commit after a tag → `X.Y.Z.postN.devM` (`version_scheme = "no-guess-dev"` — it never guesses the *next* version).
 
-The only manual bump is cosmetic: `CITATION.cff`'s `version:` and `date-released:` fields aren't derived from anything and should be updated to match, if you want "Cite this repository" to show the current version.
+`CITATION.cff`'s `version:` and `date-released:` fields still aren't derived from anything, but for normal `vX.Y.Z` releases the workflow now updates them automatically after a successful publish. Only touch `CITATION.cff` by hand if that post-publish step fails and you need to repair it.
 
 ## Cutting a release
 
@@ -47,7 +47,8 @@ The only manual bump is cosmetic: `CITATION.cff`'s `version:` and `date-released
    This is the actual trigger. It fires `release.yml`, which:
    - builds sdist + wheel with `uv build` (checking out the exact tag commit, so the version is clean — no dev suffix),
    - **pauses**, waiting for a manual approval on the `pypi` environment,
-   - once approved, runs `uv publish --trusted-publishing always` — no API token anywhere, OIDC handles auth.
+   - once approved, runs `uv publish --trusted-publishing always` — no API token anywhere, OIDC handles auth,
+   - once published, a final job bumps `CITATION.cff`'s `version:`/`date-released:` to match the tag and commits it straight to `main` (`chore: bump CITATION.cff to vX.Y.Z [skip ci]`) — nothing for you to do here.
 
 4. **Watch it and approve:**
 
@@ -76,9 +77,11 @@ curl -s "https://pypi.org/pypi/parx/X.Y.Z/json" | python3 -c "import json,sys; p
 
 - **shields.io badges (the PyPI version badge, etc.) are served with `Cache-Control: max-age=10800` (3 hours).** GitHub's image proxy, PyPI's image proxy, and your own browser each cache independently against that header. A badge can show a stale version for up to ~3 hours after a fresh release even though shields.io's underlying data (`img.shields.io/pypi/v/parx.json`) is already correct — this is expected and self-resolves; it's not a sign anything's broken.
 
+- **The `update-citation` job pushes a commit straight to `main` after every release** (bumping `CITATION.cff`). `git pull` before starting local work on the next change, or you'll get a divergent-branch surprise. The commit message carries `[skip ci]` so it doesn't trigger another CI/docs run for a metadata-only change.
+
 ## Pre-release checklist
 
 - [ ] Everything intended for this release is merged to `main`
 - [ ] `pytest` and `ruff check` are clean on `main` (CI already gates this on every PR, so normally already true)
-- [ ] `CITATION.cff`'s `version:`/`date-released:` updated if you want them accurate
+- [ ] `CHANGELOG.md`'s `[Unreleased]` section renamed to `[X.Y.Z] - <date>`, with a fresh empty `[Unreleased]` left above it for whatever comes next
 - [ ] Tag message says something meaningful (it becomes part of the permanent git history and the Zenodo record's metadata)

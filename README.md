@@ -331,6 +331,5 @@ The exact DFS is exponential in the worst case. Heuristics such as region sampli
 
 ### Packaging and distribution
 
-- Publish to PyPI once the API stabilizes
 - Add a CI matrix covering Julia 1.10/1.11 × Python 3.10–3.12
 - Add type stubs (`.pyi`) for IDE autocompletion
