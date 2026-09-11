@@ -1,0 +1,6 @@
+# Every file in this repo requires review/approval from a code owner before
+# merging into main (enforced by the "Parx main branch protection" ruleset's
+# `require_code_owner_review` rule). See RELEASING.md and CONTRIBUTING.md for
+# the rest of the contribution/release process.
+
+* @Johanmkr
