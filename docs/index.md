@@ -24,7 +24,22 @@ Read **[Concepts](concepts.md)** for what this means and why it's useful, **[Usa
 
 ## Installation
 
-`parx` is not yet published on PyPI (see the project's [road2publish.md](https://github.com/Johanmkr/parx/blob/main/road2publish.md) for the plan to get there). Until then, install from source:
+```bash
+pip install parx
+```
+
+Requires [Julia](https://julialang.org/) ≥ 1.10 on `PATH` (the package raises a clear `RuntimeError` with install instructions if it's missing). The first thing that touches Julia in a process (any `*_julia`/`exact_julia*` method, or `parx.precompile()`) triggers a one-time download + precompile of the Julia environment, which can take a few minutes; subsequent runs reuse the cached depot and start instantly.
+
+Optional extras:
+
+```bash
+pip install "parx[h5]"        # HDF5 model files (.h5)
+pip install "parx[animate]"   # matplotlib backend + video export
+pip install "parx[embed]"     # UMAP-based feature embedding
+pip install "parx[analysis]"  # PCA projection (plot_partition_pca)
+```
+
+To install from source instead (for development, or to track `main`):
 
 ```bash
 git clone https://github.com/Johanmkr/parx
@@ -33,15 +48,6 @@ pip install -e .
 ```
 
 See [CONTRIBUTING.md](https://github.com/Johanmkr/parx/blob/main/CONTRIBUTING.md) for the full dev-environment setup (`uv`, Julia environment instantiation, running the test suite).
-
-Optional extras:
-
-```bash
-pip install -e ".[h5]"        # HDF5 model files (.h5)
-pip install -e ".[animate]"   # matplotlib backend + video export
-pip install -e ".[embed]"     # UMAP-based feature embedding
-pip install -e ".[analysis]"  # PCA projection (plot_partition_pca)
-```
 
 ## Quick start
 
