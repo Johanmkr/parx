@@ -1,5 +1,5 @@
 """
-parx — POLyhedral Activation Region Xplorer
+parx — Polyhedral Affine Region eXplorer
 
 Exactly enumerates the linear regions of ReLU neural networks.
 """
