@@ -8,6 +8,16 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Changed
+- One way to cite parx: the Zenodo concept DOI `10.5281/zenodo.22696450`.
+  `CITATION.cff` no longer has `version:`/`date-released:` (they were always
+  one release behind, because the bump ran after the tag Zenodo archives),
+  and it now has a top-level `doi:` so GitHub's "Cite this repository"
+  output includes the DOI. The README BibTeX now matches `CITATION.cff`.
+
+### Removed
+- `release.yml`'s `update-citation` job, which isn't needed any more.
+
 ## [0.1.3] - 2026-09-11
 
 ### Added

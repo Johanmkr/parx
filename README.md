@@ -277,19 +277,18 @@ Julia threads default to all available cores; override with `JULIA_NUM_THREADS`.
 
 ## Citation
 
-Archived on Zenodo: [10.5281/zenodo.22696450](https://doi.org/10.5281/zenodo.22696450) — this concept DOI always resolves to the latest release; each tagged version also gets its own version-specific DOI.
-
-Citation metadata is also available in [`CITATION.cff`](CITATION.cff) (used by GitHub's "Cite this repository" button).
+Please cite parx through its Zenodo concept DOI, [10.5281/zenodo.22696450](https://doi.org/10.5281/zenodo.22696450). It always resolves to the latest release, so the citation stays the same across versions. [`CITATION.cff`](CITATION.cff) is the single source of this metadata: GitHub's "Cite this repository" button, Zenodo and the entry below all come from it.
 
 ```bibtex
 @software{parx,
-  author = {Johan Mylius-Kroken},
-  title  = {parx — Polyhedral Affine Region eXplorer},
-  year   = {2026},
-  url    = {https://github.com/Johanmkr/parx},
-  doi    = {10.5281/zenodo.22696450}
+  author = {Mylius-Kroken, Johan},
+  title  = {parx: Polyhedral Affine Region eXplorer},
+  doi    = {10.5281/zenodo.22696450},
+  url    = {https://github.com/Johanmkr/parx}
 }
 ```
+
+If you need to pin the exact version you used (for example for reproducibility), add `version = {X.Y.Z}` to the entry, or use that release's own DOI from the [Zenodo record](https://doi.org/10.5281/zenodo.22696450) instead of the concept DOI.
 
 ## License
 
