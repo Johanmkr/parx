@@ -18,7 +18,7 @@ Nothing to bump by hand. `pyproject.toml` uses `setuptools-scm` (`dynamic = ["ve
 - Checked out exactly on tag `vX.Y.Z` → version is exactly `X.Y.Z`.
 - Any commit after a tag → `X.Y.Z.postN.devM` (`version_scheme = "no-guess-dev"` — it never guesses the *next* version).
 
-`CITATION.cff`'s `version:` and `date-released:` fields still aren't derived from anything, but for normal `vX.Y.Z` releases the workflow now opens or updates a PR with those fields bumped automatically after a successful publish. Only touch `CITATION.cff` by hand if that post-publish PR step fails and you need to repair it.
+`CITATION.cff` has no `version:` or `date-released:` on purpose. It cites the concept DOI, which never changes, and Zenodo takes each archived version's number and date from the release tag. So there is nothing to update in `CITATION.cff` when you release.
 
 ## Cutting a release
 
@@ -47,8 +47,7 @@ Nothing to bump by hand. `pyproject.toml` uses `setuptools-scm` (`dynamic = ["ve
    This is the actual trigger. It fires `release.yml`, which:
    - builds sdist + wheel with `uv build` (checking out the exact tag commit, so the version is clean — no dev suffix),
    - **pauses**, waiting for a manual approval on the `pypi` environment,
-   - once approved, runs `uv publish --trusted-publishing always` — no API token anywhere, OIDC handles auth,
-   - once published, a final job bumps `CITATION.cff`'s `version:`/`date-released:` to match the tag and opens or updates a PR with commit message `chore: bump CITATION.cff to vX.Y.Z [skip ci]` — merge that PR when convenient.
+   - once approved, runs `uv publish --trusted-publishing always` — no API token anywhere, OIDC handles auth.
 
 4. **Watch it and approve:**
 
@@ -76,8 +75,6 @@ curl -s "https://pypi.org/pypi/parx/X.Y.Z/json" | python3 -c "import json,sys; p
 - **The DOI can't exist before a release is archived, so it can never appear in the README baked into that same release's PyPI upload.** Getting the DOI badge to actually show up on the *displayed* PyPI project page (PyPI only shows the latest version's README) takes two rounds: one release to mint the DOI (`v0.1.1`), then a follow-up (`v0.1.2`) that adds the DOI/badges and republishes. Not needed again — the concept DOI, once minted, stays valid for all future versions without any further action.
 
 - **shields.io badges (the PyPI version badge, etc.) are served with `Cache-Control: max-age=10800` (3 hours).** GitHub's image proxy, PyPI's image proxy, and your own browser each cache independently against that header. A badge can show a stale version for up to ~3 hours after a fresh release even though shields.io's underlying data (`img.shields.io/pypi/v/parx.json`) is already correct — this is expected and self-resolves; it's not a sign anything's broken.
-
-- **The `update-citation` job opens or updates an automation PR after every release** (bumping `CITATION.cff`). Merge it back to `main` when convenient. The commit message carries `[skip ci]` so it doesn't trigger another CI/docs run for a metadata-only change.
 
 ## Pre-release checklist
 

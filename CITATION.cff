@@ -6,9 +6,8 @@ abstract: >-
   regions of ReLU neural networks. A Python API layered over a Julia
   backend for the combinatorially intensive region-finding algorithms.
 type: software
-version: 0.1.2
-date-released: "2026-09-10"
 license: MIT
+doi: 10.5281/zenodo.22696450
 repository-code: "https://github.com/Johanmkr/parx"
 url: "https://github.com/Johanmkr/parx"
 authors:
